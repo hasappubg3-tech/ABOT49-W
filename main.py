@@ -68,13 +68,16 @@ def get_buttons(pid=None):
 def get_btn(bid): r = db().execute("SELECT * FROM buttons WHERE id=?", (bid,)).fetchone(); return dict(r) if r else None
 
 def add_btn(pid, t, label, content=None, file_id=None):
-    with db() as c:
-        q = "SELECT COALESCE(MAX(ord),0)+1 FROM buttons WHERE parent_id IS NULL" if pid is None \
-            else "SELECT COALESCE(MAX(ord),0)+1 FROM buttons WHERE parent_id=?"
-        n = (c.execute(q) if pid is None else c.execute(q, (pid,))).fetchone()[0]
-        c.execute("INSERT INTO buttons(parent_id,type,label,content,file_id,ord) VALUES(?,?,?,?,?,?)",
-                  (pid, t, label, content, file_id, n))
-        return c.lastrowid
+    conn = db()
+    cur = conn.cursor()
+    q = "SELECT COALESCE(MAX(ord),0)+1 FROM buttons WHERE parent_id IS NULL" if pid is None \
+        else "SELECT COALESCE(MAX(ord),0)+1 FROM buttons WHERE parent_id=?"
+    n = (cur.execute(q) if pid is None else cur.execute(q, (pid,))).fetchone()[0]
+    cur.execute("INSERT INTO buttons(parent_id,type,label,content,file_id,ord) VALUES(?,?,?,?,?,?)",
+                (pid, t, label, content, file_id, n))
+    conn.commit()
+    conn.close()
+    return cur.lastrowid
 
 def upd_btn(bid, label=None, content=None, file_id=None):
     with db() as c:

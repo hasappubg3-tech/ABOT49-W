@@ -947,7 +947,6 @@ async def _call_groq(client: httpx.AsyncClient, prompt: str):
         "model": GROQ_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,
-        "max_tokens": 32768,
     }
     resp = await client.post(
         GROQ_URL,

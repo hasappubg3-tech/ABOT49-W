@@ -1,13 +1,27 @@
 import logging
 import os
 import sqlite3
+import json
+import warnings
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", FutureWarning)
+    import google.generativeai as genai
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 DB = "data.db"
+
+# ── إعداد Gemini ──────────────────────────────────────────────────
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    _gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+else:
+    _gemini_model = None
 
 BTN_BACK   = "🔙 رجوع"
 BTN_ADD    = "➕ إضافة"
@@ -664,6 +678,106 @@ async def cb_manage(update: Update, ctx):
         await q.edit_message_text(f"👥 *المشرفون* ({len(all_admins())}):",
                                   parse_mode="Markdown", reply_markup=kb_admins_inline()); return
 
+# ── خاصية الذكاء الاصطناعي (Gemini) ─────────────────────────────
+AI_SYSTEM_PROMPT = """أنت مساعد لبوت تلغرام لإدارة الأزرار.
+مهمتك: عندما يطلب المشرف إضافة أزرار، تُرجع JSON فقط بالشكل التالي (بدون أي نص إضافي):
+{
+  "buttons": [
+    {"label": "اسم الزر", "type": "menu", "new_row": true},
+    {"label": "اسم آخر", "type": "content", "new_row": false}
+  ]
+}
+قواعد:
+- type يكون "menu" إذا كان الزر قائمة فرعية، أو "content" إذا كان يحتوي محتوى.
+- new_row: true يعني الزر في سطر جديد، false يعني بجانب الزر السابق في نفس السطر.
+- رتّب الأزرار بشكل منطقي حسب طلب المستخدم.
+- أرجع JSON صالح فقط، لا تضف أي شرح أو نص خارج JSON."""
+
+async def gemini_generate_buttons(user_request: str):
+    """يستدعي Gemini ويُرجع قائمة أزرار أو None عند الخطأ."""
+    if not _gemini_model:
+        return None, "❌ مفتاح Gemini API غير مُعَيَّن."
+    try:
+        prompt = f"{AI_SYSTEM_PROMPT}\n\nطلب المشرف: {user_request}"
+        response = _gemini_model.generate_content(prompt)
+        raw = response.text.strip()
+        # إزالة markdown code blocks إن وُجدت
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = json.loads(raw.strip())
+        buttons = data.get("buttons", [])
+        if not buttons:
+            return None, "⚠️ لم يُرجع الذكاء الاصطناعي أي أزرار."
+        return buttons, None
+    except json.JSONDecodeError:
+        return None, "⚠️ لم أتمكن من تفسير رد الذكاء الاصطناعي. حاول مرة أخرى."
+    except Exception as e:
+        logging.error(f"Gemini error: {e}")
+        return None, f"❌ خطأ في الاتصال بـ Gemini: {str(e)[:100]}"
+
+async def cmd_ai(update: Update, ctx):
+    """أمر /ai للمشرفين فقط: يستقبل وصفاً ويضيف أزرار تلقائياً."""
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        await update.message.reply_text("❌ هذا الأمر للمشرفين فقط.")
+        return
+    if not GEMINI_API_KEY:
+        await update.message.reply_text("❌ مفتاح Gemini API غير مُعَيَّن. أضف GEMINI_API_KEY في المتغيرات البيئية.")
+        return
+    args = ctx.args
+    if not args:
+        await update.message.reply_text(
+            "🤖 *استخدام خاصية الذكاء الاصطناعي*\n\n"
+            "اكتب وصفاً للأزرار التي تريد إضافتها:\n"
+            "`/ai أضف أزرار: خدماتنا، من نحن، تواصل معنا`\n\n"
+            "أو:\n"
+            "`/ai أضف قائمة رئيسية فيها: الأخبار، الرياضة، التقنية، الترفيه`",
+            parse_mode="Markdown"
+        )
+        return
+
+    request_text = " ".join(args)
+    pid = ctx.user_data.get("pid")
+
+    wait_msg = await update.message.reply_text("⏳ جاري التواصل مع الذكاء الاصطناعي...")
+
+    buttons, error = await gemini_generate_buttons(request_text)
+
+    if error:
+        await wait_msg.edit_text(error)
+        return
+
+    # إضافة الأزرار إلى قاعدة البيانات
+    added = []
+    last_id = None
+    for btn in buttons:
+        label = btn.get("label", "").strip()
+        btype = btn.get("type", "menu")
+        new_row = btn.get("new_row", True)
+        if not label:
+            continue
+        if btype not in ("menu", "content"):
+            btype = "menu"
+        if last_id is None:
+            # الزر الأول: أضفه في النهاية
+            last_id = add_btn(pid, btype, label)
+        else:
+            last_id = add_btn_after(last_id, pid, btype, label, new_row=0 if not new_row else 1)
+        added.append(f"{'📂' if btype == 'menu' else '📄'} {label}")
+
+    if not added:
+        await wait_msg.edit_text("⚠️ لم تُضَف أي أزرار.")
+        return
+
+    summary = "\n".join(f"  • {a}" for a in added)
+    await wait_msg.edit_text(
+        f"✅ *تمت إضافة {len(added)} زر بواسطة الذكاء الاصطناعي:*\n\n{summary}",
+        parse_mode="Markdown"
+    )
+    await update.message.reply_text("🔄", reply_markup=build_kb(uid, pid))
+
 # ── إعداد البوت ──────────────────────────────────────────────────
 async def post_init(app):
     sid = os.environ.get("SUPER_ADMIN_ID", "").strip()
@@ -681,6 +795,7 @@ def main():
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("myid", cmd_myid))
+    app.add_handler(CommandHandler("ai", cmd_ai))
     app.add_handler(CallbackQueryHandler(cb_manage))
     app.add_handler(MessageHandler(media_filter, on_message))
 

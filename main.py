@@ -473,6 +473,8 @@ async def on_message(update: Update, ctx):
 
         # ── تنفيذ الإضافة (عمليات متعددة) ────────────────────────
         if action in ("add", "delete_then_add") and operations:
+            # نحفظ نسخة من الأزرار قبل أي تعديل لضمان صحة الفهارس
+            original_btns = list(current_btns)
             all_added = []
             for op in operations:
                 insert  = op.get("insert", -1)
@@ -482,8 +484,8 @@ async def on_message(update: Update, ctx):
                 if insert == "start":
                     anchor_id = None
                     use_after = True
-                elif isinstance(insert, int) and 0 <= insert < len(current_btns):
-                    anchor_id = current_btns[insert]["id"]
+                elif isinstance(insert, int) and 0 <= insert < len(original_btns):
+                    anchor_id = original_btns[insert]["id"]
                     use_after = True
                 else:
                     anchor_id = None
@@ -504,7 +506,6 @@ async def on_message(update: Update, ctx):
                         last_id = add_btn_after(last_id, pid, btype, label, new_row=nr)
                     use_after = True
                     all_added.append(f"{'📂' if btype == 'menu' else '📄'} {label}")
-                current_btns = get_buttons(pid)   # تحديث بعد كل عملية لضمان صحة الفهارس
             if all_added:
                 result_lines.append(f"✅ تمت إضافة {len(all_added)} زر:\n" +
                                     "\n".join(f"  • {a}" for a in all_added))
@@ -911,7 +912,6 @@ async def process_ai_request(user_request: str, current_btns: list = None):
         if GROQ_API_KEY:
             try:
                 raw = await _call_groq(client, prompt)
-                logging.info(f"[AI] {raw[:800]}")
                 action, operations, del_idx = _parse_ai_response(raw)
                 return action, operations, del_idx, None
             except json.JSONDecodeError:

@@ -510,8 +510,9 @@ async def on_message(update: Update, ctx):
             bid = add_btn(add_pid, t, text)
         ctx.user_data.pop("state", None); ctx.user_data.pop("new_type", None)
         ctx.user_data.pop("add_after", None); ctx.user_data.pop("add_pid", None)
+        ctx.user_data["pid"] = add_pid
         await m.reply_text(f"✅ تم إنشاء *{text}*", parse_mode="Markdown",
-                           reply_markup=build_kb(uid, pid))
+                           reply_markup=build_kb(uid, add_pid))
         if t == "content":
             await set_panel(ctx, chat_id,
                             f"📄 *{text}*\n\nلا يوجد محتوى بعد. اضغط ➕ لإضافة محتوى.",
@@ -792,9 +793,10 @@ async def cb_manage(update: Update, ctx):
     if d.startswith("x_"):
         bid = int(d[2:]); b = get_btn(bid); ep = b["parent_id"] if b else None
         del_btn(bid)
+        ctx.user_data["pid"] = ep
         await q.edit_message_text("⚙️ *إدارة الأزرار*:", parse_mode="Markdown",
                                   reply_markup=kb_manage(ep))
-        await q.message.reply_text("✅ تم الحذف.", reply_markup=build_kb(uid, pid))
+        await q.message.reply_text("✅ تم الحذف.", reply_markup=build_kb(uid, ep))
         return
 
     # ── زر + جنب زر موجود ────────────────────────────────────────

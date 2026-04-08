@@ -33,7 +33,8 @@ BTN_CANCEL = "❌ إلغاء"
 BTN_SWAP = "🔀 تغيير"
 
 ADMIN_BTNS   = {BTN_ADMINS}
-SPECIAL_BTNS = {BTN_BACK, BTN_ADD, BTN_MANAGE, BTN_ADMINS, BTN_CANCEL, BTN_SWAP,
+BTN_PLUS = "➕"
+SPECIAL_BTNS = {BTN_BACK, BTN_ADD, BTN_MANAGE, BTN_ADMINS, BTN_CANCEL, BTN_SWAP, BTN_PLUS,
                 "📂 قائمة", "📄 محتوى"}
 
 # ── قاعدة البيانات ────────────────────────────────────────────────
@@ -293,21 +294,28 @@ ICON = {"menu": "📂", "content": "📄"}
 
 def build_kb(uid, pid=None):
     btns = get_buttons(pid)
+    admin = is_admin(uid)
     rows = []
     current_row = []
     for i, b in enumerate(btns):
         if i > 0 and b.get('new_row', 1):
             if current_row:
+                if admin:
+                    current_row.append(KeyboardButton(BTN_PLUS))
                 rows.append(current_row)
             current_row = []
         current_row.append(KeyboardButton(b['label']))
     if current_row:
+        if admin:
+            current_row.append(KeyboardButton(BTN_PLUS))
         rows.append(current_row)
+    if admin and not btns:
+        rows.append([KeyboardButton(BTN_PLUS)])
     if pid is not None:
         rows.append([KeyboardButton(BTN_BACK)])
-    if is_admin(uid):
+    if admin:
         rows.append([KeyboardButton(BTN_ADMINS)])
-    return ReplyKeyboardMarkup(rows, resize_keyboard=True) if (rows or is_admin(uid)) else None
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True) if (rows or admin) else None
 
 # ── لوحات Inline ─────────────────────────────────────────────────
 def kb_manage(pid=None):
@@ -623,6 +631,11 @@ async def on_message(update: Update, ctx):
 
     # ── أزرار المشرف ──────────────────────────────────────────────
     if is_admin(uid):
+        if text == BTN_PLUS:
+            ctx.user_data["add_pid"] = pid
+            ctx.user_data.pop("add_after", None)
+            await set_panel(ctx, chat_id, "اختر نوع الزر الجديد:", kb_add_type())
+            return
         if text == BTN_SWAP:
             btns = get_buttons(pid)
             if len(btns) < 2:

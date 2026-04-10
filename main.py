@@ -101,6 +101,13 @@ def init_db():
                 url TEXT NOT NULL,
                 ord INTEGER DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS user_stats (
+                user_id   INTEGER PRIMARY KEY,
+                opens     INTEGER DEFAULT 0,
+                sessions  INTEGER DEFAULT 0,
+                last_notif_opens    INTEGER DEFAULT 0,
+                last_notif_sessions INTEGER DEFAULT 0
+            );
         """)
         try:
             c.execute("ALTER TABLE buttons ADD COLUMN new_row INTEGER DEFAULT 1")
@@ -185,6 +192,76 @@ def build_caption_btn_markup(buttons):
         return None
     rows = [[InlineKeyboardButton(b["label"], url=b["url"])] for b in buttons]
     return InlineKeyboardMarkup(rows)
+
+# ── نظام التنبيهات ────────────────────────────────────────────────
+def _ensure_user_stats(uid):
+    c = db()
+    c.execute("INSERT OR IGNORE INTO user_stats(user_id) VALUES(?)", (uid,))
+    c.commit(); c.close()
+
+def get_user_stats(uid):
+    _ensure_user_stats(uid)
+    r = db().execute("SELECT * FROM user_stats WHERE user_id=?", (uid,)).fetchone()
+    return dict(r) if r else {}
+
+def inc_user_opens(uid):
+    _ensure_user_stats(uid)
+    c = db()
+    c.execute("UPDATE user_stats SET opens=opens+1 WHERE user_id=?", (uid,))
+    c.commit(); c.close()
+    return db().execute("SELECT opens FROM user_stats WHERE user_id=?", (uid,)).fetchone()[0]
+
+def inc_user_sessions(uid):
+    _ensure_user_stats(uid)
+    c = db()
+    c.execute("UPDATE user_stats SET sessions=sessions+1 WHERE user_id=?", (uid,))
+    c.commit(); c.close()
+    return db().execute("SELECT sessions FROM user_stats WHERE user_id=?", (uid,)).fetchone()[0]
+
+def mark_notif_sent(uid):
+    s = get_user_stats(uid)
+    c = db()
+    c.execute("UPDATE user_stats SET last_notif_opens=?, last_notif_sessions=? WHERE user_id=?",
+              (s.get("opens", 0), s.get("sessions", 0), uid))
+    c.commit(); c.close()
+
+def should_notify(uid) -> bool:
+    msg = get_setting("notif_message", "")
+    if not msg:
+        return False
+    enabled = get_setting("notif_enabled", "1")
+    if enabled != "1":
+        return False
+    s = get_user_stats(uid)
+    opens      = s.get("opens", 0)
+    sessions   = s.get("sessions", 0)
+    last_op    = s.get("last_notif_opens", 0)
+    last_ses   = s.get("last_notif_sessions", 0)
+    try:
+        every_opens    = int(get_setting("notif_every_opens", "5"))
+        every_sessions = int(get_setting("notif_every_sessions", "3"))
+    except Exception:
+        every_opens, every_sessions = 5, 3
+    if every_opens > 0 and opens > 0 and (opens - last_op) >= every_opens:
+        return True
+    if every_sessions > 0 and sessions > 0 and (sessions - last_ses) >= every_sessions:
+        return True
+    return False
+
+async def send_notif(target, uid):
+    msg   = get_setting("notif_message", "")
+    chan  = get_setting("notif_channel", "").strip()
+    if not msg:
+        return
+    markup = None
+    if chan:
+        url = chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}"
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("📢 اشترك الآن", url=url)]])
+    try:
+        await target.reply_text(msg, reply_markup=markup)
+        mark_notif_sent(uid)
+    except Exception:
+        pass
 
 def get_buttons(pid=None):
     if pid is None:
@@ -558,15 +635,47 @@ def kb_admins_inline():
 def kb_settings():
     global_cap = get_global_caption()
     cap_btns = get_caption_buttons()
+    notif_on = get_setting("notif_enabled", "1") == "1"
+    notif_msg = get_setting("notif_message", "")
     cap_label    = "✏️ تغيير كليشة الكلام" if global_cap else "📌 كليشة الكلام"
     capbtn_label = f"🔗 كليشة الأزرار ({len(cap_btns)} زر)" if cap_btns else "🔗 كليشة الأزرار"
+    notif_label  = f"🔔 التنبيهات {'✅' if (notif_on and notif_msg) else '⭕'}"
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("👥 المشرفون",        callback_data="st_admins")],
         [InlineKeyboardButton("💾 النسخ الاحتياطي", callback_data="st_backup_menu")],
         [InlineKeyboardButton(cap_label,            callback_data="st_caption")],
         [InlineKeyboardButton(capbtn_label,         callback_data="st_capbtn")],
+        [InlineKeyboardButton(notif_label,          callback_data="st_notif")],
         [InlineKeyboardButton("📊 الإحصائيات",     callback_data="st_stats")],
     ])
+
+def kb_notif_settings():
+    notif_on  = get_setting("notif_enabled", "1") == "1"
+    msg       = get_setting("notif_message", "")
+    chan      = get_setting("notif_channel", "")
+    every_op  = get_setting("notif_every_opens", "5")
+    every_ses = get_setting("notif_every_sessions", "3")
+    toggle_label = "🔕 إيقاف التنبيهات" if notif_on else "🔔 تفعيل التنبيهات"
+    rows = []
+    rows.append([InlineKeyboardButton(toggle_label, callback_data="st_notif_toggle")])
+    rows.append([InlineKeyboardButton(
+        "✏️ تغيير رسالة التنبيه" if msg else "✏️ كتابة رسالة التنبيه",
+        callback_data="st_notif_msg"
+    )])
+    rows.append([InlineKeyboardButton(
+        f"📢 القناة: {chan}" if chan else "📢 تحديد رابط القناة",
+        callback_data="st_notif_chan"
+    )])
+    rows.append([InlineKeyboardButton(
+        f"📂 كل {every_op} فتح محتوى",
+        callback_data="st_notif_opens"
+    )])
+    rows.append([InlineKeyboardButton(
+        f"🔄 كل {every_ses} جلسات",
+        callback_data="st_notif_sessions"
+    )])
+    rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="st_back")])
+    return InlineKeyboardMarkup(rows)
 
 def kb_caption_settings():
     global_cap = get_global_caption()
@@ -637,7 +746,7 @@ async def set_panel(ctx, chat_id, text, markup=None):
     ctx.user_data["panel_id"] = msg.message_id
 
 # ── عرض عناصر المحتوى للمستخدم ───────────────────────────────────
-async def send_items(m, bid):
+async def send_items(m, bid, uid=None):
     items = get_items(bid)
     if not items:
         await m.reply_text("📭 لا يوجد محتوى بعد.")
@@ -650,6 +759,10 @@ async def send_items(m, bid):
     link_markup = build_caption_btn_markup(cap_btns)
     for item in items:
         await send_file_item(m, item, extra_caption=extra_cap, reply_markup=link_markup)
+    if uid:
+        inc_user_opens(uid)
+        if should_notify(uid):
+            await send_notif(m, uid)
 
 # ── /start ────────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx):
@@ -664,6 +777,10 @@ async def cmd_start(update: Update, ctx):
     await update.message.reply_text("👋 أهلاً!", reply_markup=kb)
     if is_admin(uid):
         await set_panel(ctx, update.message.chat_id, "⚙️ *إدارة الأزرار*:", kb_manage(None))
+    if not is_admin(uid):
+        inc_user_sessions(uid)
+        if should_notify(uid):
+            await send_notif(update.message, uid)
 
 async def cmd_myid(update: Update, ctx):
     await update.message.reply_text(f"🆔 `{update.effective_user.id}`", parse_mode="Markdown")
@@ -777,6 +894,56 @@ async def on_message(update: Update, ctx):
                         kb_caption_btn_settings())
         await m.reply_text(f"✅ تمت إضافة الزر: *{label}*", parse_mode="Markdown",
                            reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار رسالة التنبيه ─────────────────────────────────────
+    if state == "wait_notif_msg":
+        if not m.text or m.text in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل نصاً صحيحاً للرسالة."); return
+        set_setting("notif_message", m.text)
+        ctx.user_data.pop("state", None)
+        await set_panel(ctx, chat_id, "🔔 *نظام التنبيهات*", kb_notif_settings())
+        await m.reply_text("✅ تم حفظ رسالة التنبيه.", reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار رابط قناة التنبيه ─────────────────────────────────
+    if state == "wait_notif_chan":
+        if not m.text or m.text in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل يوزرنيم القناة أو رابطها."); return
+        chan = m.text.strip()
+        set_setting("notif_channel", chan)
+        ctx.user_data.pop("state", None)
+        await set_panel(ctx, chat_id, "🔔 *نظام التنبيهات*", kb_notif_settings())
+        await m.reply_text(f"✅ تم حفظ القناة: `{chan}`", parse_mode="Markdown",
+                           reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار فترية فتح المحتوى ─────────────────────────────────
+    if state == "wait_notif_opens":
+        try:
+            val = int(m.text.strip())
+            if val < 0: raise ValueError
+        except (ValueError, AttributeError):
+            await m.reply_text("⚠️ أرسل رقماً صحيحاً (0 أو أكثر)."); return
+        set_setting("notif_every_opens", str(val))
+        ctx.user_data.pop("state", None)
+        await set_panel(ctx, chat_id, "🔔 *نظام التنبيهات*", kb_notif_settings())
+        lbl = f"كل {val} فتح محتوى" if val > 0 else "مُعطَّل"
+        await m.reply_text(f"✅ تم الضبط: {lbl}", reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار فترية الجلسات ─────────────────────────────────────
+    if state == "wait_notif_sessions":
+        try:
+            val = int(m.text.strip())
+            if val < 0: raise ValueError
+        except (ValueError, AttributeError):
+            await m.reply_text("⚠️ أرسل رقماً صحيحاً (0 أو أكثر)."); return
+        set_setting("notif_every_sessions", str(val))
+        ctx.user_data.pop("state", None)
+        await set_panel(ctx, chat_id, "🔔 *نظام التنبيهات*", kb_notif_settings())
+        lbl = f"كل {val} جلسات" if val > 0 else "مُعطَّل"
+        await m.reply_text(f"✅ تم الضبط: {lbl}", reply_markup=build_kb(uid, pid))
         return
 
     # ── انتظار ملف الاستعادة ─────────────────────────────────────
@@ -1076,7 +1243,7 @@ async def on_message(update: Update, ctx):
                             f"📄 *{b['label']}*\n_{len(items)} عنصر_",
                             kb_content_quick(b["id"]))
         else:
-            await send_items(m, b["id"])
+            await send_items(m, b["id"], uid=uid)
 
 # ── معالج أزرار Inline ────────────────────────────────────────────
 async def cb_manage(update: Update, ctx):
@@ -1214,6 +1381,86 @@ async def cb_manage(update: Update, ctx):
             f"📄 *{b['label']}*\n_{len(items)} عنصر_\n\n{status}",
             parse_mode="Markdown",
             reply_markup=kb_content_panel(bid)
+        )
+        return
+
+    # ── إعدادات نظام التنبيهات ────────────────────────────────────
+    if d == "st_notif":
+        msg  = get_setting("notif_message", "")
+        chan = get_setting("notif_channel", "")
+        on   = get_setting("notif_enabled", "1") == "1"
+        every_op  = get_setting("notif_every_opens", "5")
+        every_ses = get_setting("notif_every_sessions", "3")
+        status_txt = "✅ مفعّل" if on else "⭕ موقوف"
+        msg_preview = f"\n\n📝 *الرسالة:*\n{msg}" if msg else "\n\n📝 لا توجد رسالة بعد."
+        chan_txt = f"\n📢 القناة: `{chan}`" if chan else ""
+        await q.edit_message_text(
+            f"🔔 *نظام التنبيهات* — {status_txt}\n"
+            f"📂 يُنبّه كل {every_op} فتح محتوى\n"
+            f"🔄 يُنبّه كل {every_ses} جلسات"
+            f"{chan_txt}{msg_preview}",
+            parse_mode="Markdown",
+            reply_markup=kb_notif_settings()
+        )
+        return
+
+    if d == "st_notif_toggle":
+        cur = get_setting("notif_enabled", "1")
+        set_setting("notif_enabled", "0" if cur == "1" else "1")
+        await q.edit_message_text("🔔 *نظام التنبيهات*", parse_mode="Markdown",
+                                  reply_markup=kb_notif_settings())
+        return
+
+    if d == "st_notif_msg":
+        ctx.user_data["state"] = "wait_notif_msg"
+        await q.edit_message_text(
+            "✏️ أرسل نص رسالة التنبيه الذي ستراه عند طلب الاشتراك:\n\n"
+            "_يمكنك استخدام إيموجي وتنسيق ماركداون_",
+            parse_mode="Markdown",
+            reply_markup=kb_cancel_inline()
+        )
+        return
+
+    if d == "st_notif_chan":
+        ctx.user_data["state"] = "wait_notif_chan"
+        await q.edit_message_text(
+            "📢 أرسل *رابط القناة* أو *يوزرنيم* القناة (مثال: @mychannel أو https://t.me/mychannel):\n\n"
+            "اضغط إلغاء لإزالة القناة الحالية.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🗑 إزالة القناة", callback_data="st_notif_chan_clear"),
+                InlineKeyboardButton("❌ إلغاء", callback_data="st_notif"),
+            ]])
+        )
+        return
+
+    if d == "st_notif_chan_clear":
+        set_setting("notif_channel", "")
+        await q.edit_message_text("✅ تم إزالة رابط القناة.", parse_mode="Markdown",
+                                  reply_markup=kb_notif_settings())
+        return
+
+    if d == "st_notif_opens":
+        ctx.user_data["state"] = "wait_notif_opens"
+        every_op = get_setting("notif_every_opens", "5")
+        await q.edit_message_text(
+            f"📂 *فتريات فتح المحتوى*\n\nالقيمة الحالية: *{every_op}* فتح\n\n"
+            "أرسل رقماً لتحديد كم مرة فتح محتوى قبل ظهور التنبيه.\n"
+            "_أرسل 0 لتعطيل هذا الشرط_",
+            parse_mode="Markdown",
+            reply_markup=kb_cancel_inline()
+        )
+        return
+
+    if d == "st_notif_sessions":
+        ctx.user_data["state"] = "wait_notif_sessions"
+        every_ses = get_setting("notif_every_sessions", "3")
+        await q.edit_message_text(
+            f"🔄 *فترية الجلسات*\n\nالقيمة الحالية: *{every_ses}* جلسات\n\n"
+            "أرسل رقماً لتحديد كم جلسة قبل ظهور التنبيه.\n"
+            "_أرسل 0 لتعطيل هذا الشرط_",
+            parse_mode="Markdown",
+            reply_markup=kb_cancel_inline()
         )
         return
 

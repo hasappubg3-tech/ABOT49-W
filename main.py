@@ -95,6 +95,12 @@ def init_db():
                 key TEXT PRIMARY KEY,
                 value TEXT
             );
+            CREATE TABLE IF NOT EXISTS caption_buttons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL,
+                url TEXT NOT NULL,
+                ord INTEGER DEFAULT 0
+            );
         """)
         try:
             c.execute("ALTER TABLE buttons ADD COLUMN new_row INTEGER DEFAULT 1")
@@ -108,6 +114,11 @@ def init_db():
             pass
         try:
             c.execute("ALTER TABLE buttons ADD COLUMN no_caption INTEGER DEFAULT 0")
+            c.commit()
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE buttons ADD COLUMN no_btn_caption INTEGER DEFAULT 0")
             c.commit()
         except Exception:
             pass
@@ -145,6 +156,35 @@ def toggle_btn_no_caption(bid):
     c.execute("UPDATE buttons SET no_caption=? WHERE id=?", (new_val, bid))
     c.commit(); c.close()
     return bool(new_val)
+
+def toggle_btn_no_btn_caption(bid):
+    b = get_btn(bid)
+    if not b: return False
+    current = b.get("no_btn_caption", 0) or 0
+    new_val = 0 if current else 1
+    c = db()
+    c.execute("UPDATE buttons SET no_btn_caption=? WHERE id=?", (new_val, bid))
+    c.commit(); c.close()
+    return bool(new_val)
+
+def get_caption_buttons():
+    return [dict(r) for r in db().execute(
+        "SELECT * FROM caption_buttons ORDER BY ord,id").fetchall()]
+
+def add_caption_button(label, url):
+    c = db(); cur = c.cursor()
+    n = cur.execute("SELECT COALESCE(MAX(ord),0)+1 FROM caption_buttons").fetchone()[0]
+    cur.execute("INSERT INTO caption_buttons(label,url,ord) VALUES(?,?,?)", (label, url, n))
+    c.commit(); c.close()
+
+def del_caption_button(cbid):
+    c = db(); c.execute("DELETE FROM caption_buttons WHERE id=?", (cbid,)); c.commit(); c.close()
+
+def build_caption_btn_markup(buttons):
+    if not buttons:
+        return None
+    rows = [[InlineKeyboardButton(b["label"], url=b["url"])] for b in buttons]
+    return InlineKeyboardMarkup(rows)
 
 def get_buttons(pid=None):
     if pid is None:
@@ -448,8 +488,13 @@ def kb_content_panel(bid):
     global_cap = get_global_caption()
     if global_cap:
         no_cap = (b.get("no_caption", 0) or 0) if b else 0
-        cap_label = "✅ تفعيل الكليشة" if no_cap else "🚫 إلغاء الكليشة"
+        cap_label = "✅ تفعيل كليشة الكلام" if no_cap else "🚫 إلغاء كليشة الكلام"
         rows.append([InlineKeyboardButton(cap_label, callback_data=f"ci_toggle_cap_{bid}")])
+    cap_btns = get_caption_buttons()
+    if cap_btns:
+        no_btn_cap = (b.get("no_btn_caption", 0) or 0) if b else 0
+        btn_cap_label = "✅ تفعيل كليشة الأزرار" if no_btn_cap else "🚫 إلغاء كليشة الأزرار"
+        rows.append([InlineKeyboardButton(btn_cap_label, callback_data=f"ci_toggle_btn_cap_{bid}")])
     rows.append([InlineKeyboardButton("✏️ تغيير الاسم", callback_data=f"el_{bid}")])
     rows.append([InlineKeyboardButton("🗑 حذف الزر",    callback_data=f"confirm_x_{bid}")])
     pid = b["parent_id"] if b else None
@@ -480,8 +525,13 @@ def kb_content_quick(bid):
     global_cap = get_global_caption()
     if global_cap:
         no_cap = (b.get("no_caption", 0) or 0) if b else 0
-        cap_label = "✅ تفعيل الكليشة" if no_cap else "🚫 إلغاء الكليشة"
+        cap_label = "✅ تفعيل كليشة الكلام" if no_cap else "🚫 إلغاء كليشة الكلام"
         rows.append([InlineKeyboardButton(cap_label, callback_data=f"ci_toggle_cap_{bid}")])
+    cap_btns = get_caption_buttons()
+    if cap_btns:
+        no_btn_cap = (b.get("no_btn_caption", 0) or 0) if b else 0
+        btn_cap_label = "✅ تفعيل كليشة الأزرار" if no_btn_cap else "🚫 إلغاء كليشة الأزرار"
+        rows.append([InlineKeyboardButton(btn_cap_label, callback_data=f"ci_toggle_btn_cap_{bid}")])
     rows.append([InlineKeyboardButton("✏️ تغيير الاسم", callback_data=f"el_{bid}")])
     rows.append([InlineKeyboardButton("🗑 حذف",          callback_data=f"confirm_x_{bid}")])
     return InlineKeyboardMarkup(rows)
@@ -507,12 +557,15 @@ def kb_admins_inline():
 
 def kb_settings():
     global_cap = get_global_caption()
-    cap_label = "✏️ تغيير الكليشة الثابتة" if global_cap else "📌 إضافة كليشة ثابتة"
+    cap_btns = get_caption_buttons()
+    cap_label    = "✏️ تغيير كليشة الكلام" if global_cap else "📌 كليشة الكلام"
+    capbtn_label = f"🔗 كليشة الأزرار ({len(cap_btns)} زر)" if cap_btns else "🔗 كليشة الأزرار"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("👥 المشرفون",      callback_data="st_admins")],
+        [InlineKeyboardButton("👥 المشرفون",        callback_data="st_admins")],
         [InlineKeyboardButton("💾 النسخ الاحتياطي", callback_data="st_backup_menu")],
-        [InlineKeyboardButton(cap_label,          callback_data="st_caption")],
-        [InlineKeyboardButton("📊 الإحصائيات",   callback_data="st_stats")],
+        [InlineKeyboardButton(cap_label,            callback_data="st_caption")],
+        [InlineKeyboardButton(capbtn_label,         callback_data="st_capbtn")],
+        [InlineKeyboardButton("📊 الإحصائيات",     callback_data="st_stats")],
     ])
 
 def kb_caption_settings():
@@ -523,6 +576,18 @@ def kb_caption_settings():
         rows.append([InlineKeyboardButton("🗑 حذف الكليشة",   callback_data="st_caption_clear")])
     else:
         rows.append([InlineKeyboardButton("➕ كتابة الكليشة", callback_data="st_caption_set")])
+    rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="st_back")])
+    return InlineKeyboardMarkup(rows)
+
+def kb_caption_btn_settings():
+    btns = get_caption_buttons()
+    rows = []
+    for b in btns:
+        rows.append([
+            InlineKeyboardButton(f"🔗 {b['label']}", url=b["url"]),
+            InlineKeyboardButton("🗑", callback_data=f"st_capbtn_del_{b['id']}"),
+        ])
+    rows.append([InlineKeyboardButton("➕ إضافة زر رابط", callback_data="st_capbtn_add")])
     rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="st_back")])
     return InlineKeyboardMarkup(rows)
 
@@ -580,8 +645,11 @@ async def send_items(m, bid):
     b = get_btn(bid)
     no_cap = (b.get("no_caption", 0) or 0) if b else 0
     extra_cap = get_global_caption() if not no_cap else ""
+    no_btn_cap = (b.get("no_btn_caption", 0) or 0) if b else 0
+    cap_btns = get_caption_buttons() if not no_btn_cap else []
+    link_markup = build_caption_btn_markup(cap_btns)
     for item in items:
-        await send_file_item(m, item, extra_caption=extra_cap)
+        await send_file_item(m, item, extra_caption=extra_cap, reply_markup=link_markup)
 
 # ── /start ────────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx):
@@ -682,6 +750,33 @@ async def on_message(update: Update, ctx):
                         f"✅ تم حفظ الكليشة الثابتة:\n\n{m.text}\n\n⚙️ *الاعدادات*",
                         kb_settings())
         await m.reply_text("✅ تم حفظ الكليشة.", reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار اسم زر الرابط ────────────────────────────────────
+    if state == "wait_capbtn_label":
+        if not m.text or m.text in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل نصاً صحيحاً لاسم الزر."); return
+        ctx.user_data["capbtn_label"] = m.text
+        ctx.user_data["state"] = "wait_capbtn_url"
+        await m.reply_text(
+            f"✅ الاسم: *{m.text}*\n\nالآن أرسل *رابط* الزر (يبدأ بـ https://):",
+            parse_mode="Markdown"
+        )
+        return
+
+    # ── انتظار رابط زر الكليشة ──────────────────────────────────
+    if state == "wait_capbtn_url":
+        if not m.text or not (m.text.startswith("http://") or m.text.startswith("https://")):
+            await m.reply_text("⚠️ أرسل رابطاً صحيحاً يبدأ بـ https://"); return
+        label = ctx.user_data.pop("capbtn_label", "زر")
+        add_caption_button(label, m.text)
+        ctx.user_data.pop("state", None)
+        btns = get_caption_buttons()
+        await set_panel(ctx, chat_id,
+                        f"🔗 *كليشة الأزرار* — {len(btns)} زر",
+                        kb_caption_btn_settings())
+        await m.reply_text(f"✅ تمت إضافة الزر: *{label}*", parse_mode="Markdown",
+                           reply_markup=build_kb(uid, pid))
         return
 
     # ── انتظار ملف الاستعادة ─────────────────────────────────────
@@ -1075,7 +1170,46 @@ async def cb_manage(update: Update, ctx):
         b = get_btn(bid)
         items = get_items(bid)
         no_cap = (b.get("no_caption", 0) or 0) if b else 0
-        status = "🚫 الكليشة مُلغاة لهذا الزر" if no_cap else "✅ الكليشة مفعّلة لهذا الزر"
+        status = "🚫 كليشة الكلام مُلغاة لهذا الزر" if no_cap else "✅ كليشة الكلام مفعّلة لهذا الزر"
+        await q.edit_message_text(
+            f"📄 *{b['label']}*\n_{len(items)} عنصر_\n\n{status}",
+            parse_mode="Markdown",
+            reply_markup=kb_content_panel(bid)
+        )
+        return
+
+    if d == "st_capbtn":
+        btns = get_caption_buttons()
+        txt = f"🔗 *كليشة الأزرار* — {len(btns)} زر\n\nهذه الأزرار تظهر أسفل كل محتوى يُرسله البوت." if btns else "🔗 *كليشة الأزرار*\n\nلا توجد أزرار بعد. اضغط ➕ لإضافة زر رابط."
+        await q.edit_message_text(txt, parse_mode="Markdown",
+                                  reply_markup=kb_caption_btn_settings())
+        return
+
+    if d == "st_capbtn_add":
+        ctx.user_data["state"] = "wait_capbtn_label"
+        await q.edit_message_text(
+            "🔗 *إضافة زر رابط*\n\nأرسل *اسم الزر* الذي سيظهر للمستخدمين:",
+            parse_mode="Markdown",
+            reply_markup=kb_cancel_inline()
+        )
+        return
+
+    if d.startswith("st_capbtn_del_"):
+        cbid = int(d[14:])
+        del_caption_button(cbid)
+        btns = get_caption_buttons()
+        txt = f"🔗 *كليشة الأزرار* — {len(btns)} زر" if btns else "🔗 *كليشة الأزرار*\n\nلا توجد أزرار بعد."
+        await q.edit_message_text(txt, parse_mode="Markdown",
+                                  reply_markup=kb_caption_btn_settings())
+        return
+
+    if d.startswith("ci_toggle_btn_cap_"):
+        bid = int(d[18:])
+        toggle_btn_no_btn_caption(bid)
+        b = get_btn(bid)
+        items = get_items(bid)
+        no_btn_cap = (b.get("no_btn_caption", 0) or 0) if b else 0
+        status = "🚫 كليشة الأزرار مُلغاة لهذا الزر" if no_btn_cap else "✅ كليشة الأزرار مفعّلة لهذا الزر"
         await q.edit_message_text(
             f"📄 *{b['label']}*\n_{len(items)} عنصر_\n\n{status}",
             parse_mode="Markdown",

@@ -1390,22 +1390,48 @@ async def cb_manage(update: Update, ctx):
             await q.answer()
             clear_pending_notif(uid)
             try:
-                await q.edit_message_text(
-                    "✅ *شكراً لك!*\n\nيمكنك الآن الاستمرار في التصفح.",
-                    parse_mode="Markdown"
-                )
+                await q.edit_message_reply_markup(reply_markup=None)
             except Exception:
                 pass
+            try:
+                await ctx.bot.send_message(
+                    chat_id=q.message.chat_id,
+                    text="✅ *شكراً لك!*\n\nيمكنك الآن الاستمرار في التصفح.",
+                    parse_mode="Markdown",
+                    api_kwargs={"message_effect_id": "5046589279464577574"}
+                )
+            except Exception:
+                try:
+                    await ctx.bot.send_message(
+                        chat_id=q.message.chat_id,
+                        text="✅ *شكراً لك!*\n\nيمكنك الآن الاستمرار في التصفح.",
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    pass
         else:
             await q.answer()
             clear_pending_notif(uid)
             try:
-                await q.edit_message_text(
-                    "👌 *حسناً!*\n\nيمكنك الاستمرار في التصفح.",
-                    parse_mode="Markdown"
-                )
+                await q.edit_message_reply_markup(reply_markup=None)
             except Exception:
                 pass
+            try:
+                await ctx.bot.send_message(
+                    chat_id=q.message.chat_id,
+                    text="👌 *حسناً!*\n\nيمكنك الاستمرار في التصفح.",
+                    parse_mode="Markdown",
+                    api_kwargs={"message_effect_id": "5104858069142078462"}
+                )
+            except Exception:
+                try:
+                    await ctx.bot.send_message(
+                        chat_id=q.message.chat_id,
+                        text="👌 *حسناً!*\n\nيمكنك الاستمرار في التصفح.",
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    pass
         return
 
     await q.answer()

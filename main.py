@@ -1151,20 +1151,38 @@ async def _download_image_base64(bot, file_id: str):
     buf.seek(0)
     return base64.b64encode(buf.read()).decode(), "image/jpeg"
 
+GEMINI_VISION_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"]
+
 async def _call_gemini_vision(client: httpx.AsyncClient, prompt: str, images: list):
-    """يستدعي Gemini Vision API مع تدوير المفاتيح تلقائياً."""
+    """يستدعي Gemini Vision API مع تدوير المفاتيح والنماذج تلقائياً."""
     parts = [{"text": prompt}]
     for img in images:
         parts.append({"inline_data": {"mime_type": img["mime"], "data": img["data"]}})
     payload = {"contents": [{"parts": parts}]}
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-    for key in GEMINI_KEYS:
-        resp = await client.post(url, params={"key": key}, json=payload, timeout=60)
-        if resp.status_code in (429, 503):
-            logging.warning(f"Gemini Vision key ...{key[-6:]} rate-limited, trying next key...")
-            continue
-        resp.raise_for_status()
-        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    for model in GEMINI_VISION_MODELS:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        for key in GEMINI_KEYS:
+            try:
+                resp = await client.post(url, params={"key": key}, json=payload, timeout=60)
+                if resp.status_code in (429, 503):
+                    logging.warning(f"Gemini Vision {model} key ...{key[-6:]} rate-limited, trying next...")
+                    continue
+                if resp.status_code == 404:
+                    logging.warning(f"Gemini Vision model {model} not found, trying next model...")
+                    break
+                resp.raise_for_status()
+                data = resp.json()
+                candidate = data.get("candidates", [{}])[0]
+                finish = candidate.get("finishReason", "")
+                if finish in ("SAFETY", "RECITATION", "OTHER"):
+                    logging.warning(f"Gemini Vision blocked: {finish}")
+                    return None
+                text = candidate.get("content", {}).get("parts", [{}])[0].get("text", "")
+                if text:
+                    logging.info(f"Gemini Vision raw response: {text[:300]}")
+                    return text
+            except Exception as e:
+                logging.warning(f"Gemini Vision {model} exception: {e}")
     return None
 
 async def _process_image_batch(wait_msg, m, ctx, uid, pid, images: list, btn_type: str):

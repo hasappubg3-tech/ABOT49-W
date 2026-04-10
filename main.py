@@ -134,6 +134,24 @@ def init_db():
             c.commit()
         except Exception:
             pass
+        try:
+            c.execute("ALTER TABLE user_stats ADD COLUMN first_seen INTEGER DEFAULT 0")
+            c.commit()
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE user_stats ADD COLUMN last_active INTEGER DEFAULT 0")
+            c.commit()
+        except Exception:
+            pass
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS daily_stats (
+                date      TEXT PRIMARY KEY,
+                msg_count INTEGER DEFAULT 0,
+                new_users INTEGER DEFAULT 0
+            );
+        """)
+        c.commit()
 
 def is_admin(uid):
     return db().execute("SELECT 1 FROM admins WHERE id=?", (uid,)).fetchone() is not None
@@ -199,9 +217,30 @@ def build_caption_btn_markup(buttons):
     return InlineKeyboardMarkup(rows)
 
 # ── نظام التنبيهات ────────────────────────────────────────────────
+def _today_str():
+    return datetime.utcnow().strftime("%Y-%m-%d")
+
 def _ensure_user_stats(uid):
+    import time as _time
     c = db()
-    c.execute("INSERT OR IGNORE INTO user_stats(user_id) VALUES(?)", (uid,))
+    now = int(_time.time())
+    today = _today_str()
+    existing = c.execute("SELECT user_id, first_seen FROM user_stats WHERE user_id=?", (uid,)).fetchone()
+    if existing is None:
+        c.execute("INSERT OR IGNORE INTO user_stats(user_id, first_seen, last_active) VALUES(?,?,?)", (uid, now, now))
+        c.execute("INSERT INTO daily_stats(date, new_users) VALUES(?,1) ON CONFLICT(date) DO UPDATE SET new_users=new_users+1", (today,))
+    elif existing["first_seen"] == 0:
+        c.execute("UPDATE user_stats SET first_seen=? WHERE user_id=?", (now, uid))
+    c.commit(); c.close()
+
+def track_message(uid):
+    import time as _time
+    _ensure_user_stats(uid)
+    c = db()
+    today = _today_str()
+    now = int(_time.time())
+    c.execute("UPDATE user_stats SET last_active=? WHERE user_id=?", (now, uid))
+    c.execute("INSERT INTO daily_stats(date, msg_count) VALUES(?,1) ON CONFLICT(date) DO UPDATE SET msg_count=msg_count+1", (today,))
     c.commit(); c.close()
 
 def get_user_stats(uid):
@@ -762,23 +801,62 @@ def kb_backup_menu():
     ])
 
 def get_stats() -> str:
+    import time as _time
+    now = int(_time.time())
+    today = _today_str()
+    yesterday = (datetime.datetime.utcnow() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    day30_ago  = (datetime.datetime.utcnow() - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+    ts_7d  = now - 7  * 86400
+    ts_14d = now - 14 * 86400
+    ts_30d = now - 30 * 86400
+
     with db() as c:
-        total   = c.execute("SELECT COUNT(*) FROM buttons").fetchone()[0]
-        menus   = c.execute("SELECT COUNT(*) FROM buttons WHERE type='menu'").fetchone()[0]
-        content = c.execute("SELECT COUNT(*) FROM buttons WHERE type='content'").fetchone()[0]
-        items   = c.execute("SELECT COUNT(*) FROM content_items").fetchone()[0]
-        admins  = c.execute("SELECT COUNT(*) FROM admins").fetchone()[0]
-    media_count = len([f for f in os.listdir(MEDIA_DIR) if os.path.isfile(os.path.join(MEDIA_DIR, f))]) if os.path.isdir(MEDIA_DIR) else 0
-    db_size_kb  = round(os.path.getsize(DB) / 1024, 1) if os.path.exists(DB) else 0
+        # ── المستخدمون ──────────────────────────────────
+        total_users   = c.execute("SELECT COUNT(*) FROM user_stats").fetchone()[0]
+        new_today     = c.execute("SELECT COALESCE(SUM(new_users),0) FROM daily_stats WHERE date=?", (today,)).fetchone()[0]
+        new_yesterday = c.execute("SELECT COALESCE(SUM(new_users),0) FROM daily_stats WHERE date=?", (yesterday,)).fetchone()[0]
+        new_month     = c.execute("SELECT COALESCE(SUM(new_users),0) FROM daily_stats WHERE date>=?", (day30_ago,)).fetchone()[0]
+
+        # ── الرسائل ──────────────────────────────────────
+        msg_today     = c.execute("SELECT COALESCE(SUM(msg_count),0) FROM daily_stats WHERE date=?", (today,)).fetchone()[0]
+        msg_yesterday = c.execute("SELECT COALESCE(SUM(msg_count),0) FROM daily_stats WHERE date=?", (yesterday,)).fetchone()[0]
+        msg_month     = c.execute("SELECT COALESCE(SUM(msg_count),0) FROM daily_stats WHERE date>=?", (day30_ago,)).fetchone()[0]
+
+        # ── الاحتفاظ بالمستخدمين ─────────────────────────
+        # مستخدمون انضموا قبل 14 يوم أو أكثر (يمكن تقييمهم)
+        eligible_7d  = c.execute("SELECT COUNT(*) FROM user_stats WHERE first_seen>0 AND first_seen<=?", (ts_14d,)).fetchone()[0]
+        retained_7d  = c.execute("SELECT COUNT(*) FROM user_stats WHERE first_seen>0 AND first_seen<=? AND last_active>=?", (ts_14d, ts_7d)).fetchone()[0]
+        eligible_30d = c.execute("SELECT COUNT(*) FROM user_stats WHERE first_seen>0 AND first_seen<=?", (ts_30d,)).fetchone()[0]
+        retained_30d = c.execute("SELECT COUNT(*) FROM user_stats WHERE first_seen>0 AND first_seen<=? AND last_active>=?", (ts_30d, ts_30d)).fetchone()[0]
+
+        # ── البوت ────────────────────────────────────────
+        total_btns = c.execute("SELECT COUNT(*) FROM buttons").fetchone()[0]
+        menus      = c.execute("SELECT COUNT(*) FROM buttons WHERE type='menu'").fetchone()[0]
+        content    = c.execute("SELECT COUNT(*) FROM buttons WHERE type='content'").fetchone()[0]
+        admins     = c.execute("SELECT COUNT(*) FROM admins").fetchone()[0]
+
+    retention_7d  = f"{round(retained_7d/eligible_7d*100)}%" if eligible_7d > 0 else "—"
+    retention_30d = f"{round(retained_30d/eligible_30d*100)}%" if eligible_30d > 0 else "—"
+    db_size_kb    = round(os.path.getsize(DB) / 1024, 1) if os.path.exists(DB) else 0
+
     return (
         "📊 *إحصائيات البوت*\n\n"
-        f"📂 قوائم: `{menus}`\n"
-        f"📄 أزرار محتوى: `{content}`\n"
-        f"🗂 إجمالي الأزرار: `{total}`\n"
-        f"🖼 عناصر محتوى: `{items}`\n"
-        f"📁 ملفات محفوظة: `{media_count}`\n"
-        f"👥 المشرفون: `{admins}`\n"
-        f"💾 حجم قاعدة البيانات: `{db_size_kb} KB`"
+        "👥 *المستخدمون*\n"
+        f"  ├ إجمالي المستخدمين: `{total_users}`\n"
+        f"  ├ جدد اليوم: `{new_today}`\n"
+        f"  ├ جدد الأمس: `{new_yesterday}`\n"
+        f"  └ جدد آخر 30 يوم: `{new_month}`\n\n"
+        "💬 *الرسائل*\n"
+        f"  ├ اليوم: `{msg_today}`\n"
+        f"  ├ الأمس: `{msg_yesterday}`\n"
+        f"  └ آخر 30 يوم: `{msg_month}`\n\n"
+        "📈 *معدل الاحتفاظ بالمستخدمين*\n"
+        f"  ├ خلال 7 أيام: `{retention_7d}`\n"
+        f"  └ خلال 30 يوم: `{retention_30d}`\n\n"
+        "🤖 *البوت*\n"
+        f"  ├ قوائم: `{menus}` | محتوى: `{content}` | إجمالي: `{total_btns}`\n"
+        f"  ├ المشرفون: `{admins}`\n"
+        f"  └ حجم قاعدة البيانات: `{db_size_kb} KB`"
     )
 
 def kb_cancel_inline():
@@ -883,6 +961,8 @@ async def on_message(update: Update, ctx):
     state = ctx.user_data.get("state")
     pid = ctx.user_data.get("pid")
     chat_id = m.chat_id
+
+    track_message(uid)
 
     # ── انتظار اسم الزر ───────────────────────────────────────────
     if state == "wait_label":

@@ -342,11 +342,11 @@ def toggle_btn_unified_rating(bid):
 def add_quiz_question(bid, question, explanation=""):
     c = db()
     ids = c.execute("SELECT id FROM quiz_questions WHERE button_id=?", (bid,)).fetchall()
-    c.execute(
+    cur = c.execute(
         "INSERT INTO quiz_questions(button_id,question,correct_option,explanation,ord) VALUES(?,?,?,?,?)",
         (bid, question, 0, explanation, len(ids)+1)
     )
-    qid = c.lastrowid; c.commit(); c.close()
+    qid = cur.lastrowid; c.commit(); c.close()
     return qid
 
 def get_quiz_questions(bid):
@@ -363,8 +363,8 @@ def del_quiz_question(qid):
 def add_quiz_option(qid, text):
     c = db()
     ids = c.execute("SELECT id FROM quiz_options WHERE question_id=?", (qid,)).fetchall()
-    c.execute("INSERT INTO quiz_options(question_id,text,ord) VALUES(?,?,?)", (qid, text, len(ids)+1))
-    oid = c.lastrowid; c.commit(); c.close()
+    cur = c.execute("INSERT INTO quiz_options(question_id,text,ord) VALUES(?,?,?)", (qid, text, len(ids)+1))
+    oid = cur.lastrowid; c.commit(); c.close()
     return oid
 
 def get_quiz_options(qid):

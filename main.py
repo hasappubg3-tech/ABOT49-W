@@ -202,6 +202,21 @@ def init_db():
             c.commit()
         except Exception:
             pass
+        try:
+            c.execute("ALTER TABLE buttons ADD COLUMN unified_rating INTEGER DEFAULT 0")
+            c.commit()
+        except Exception:
+            pass
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS button_ratings (
+                button_id INTEGER NOT NULL,
+                user_id   INTEGER NOT NULL,
+                rating    INTEGER NOT NULL,
+                rated_at  INTEGER DEFAULT 0,
+                PRIMARY KEY (button_id, user_id)
+            );
+        """)
+        c.commit()
 
 def is_admin(uid):
     return db().execute("SELECT 1 FROM admins WHERE id=?", (uid,)).fetchone() is not None
@@ -273,6 +288,16 @@ def toggle_btn_no_btn_caption(bid):
     new_val = 0 if current else 1
     c = db()
     c.execute("UPDATE buttons SET no_btn_caption=? WHERE id=?", (new_val, bid))
+    c.commit(); c.close()
+    return bool(new_val)
+
+def toggle_btn_unified_rating(bid):
+    b = get_btn(bid)
+    if not b: return False
+    current = b.get("unified_rating", 0) or 0
+    new_val = 0 if current else 1
+    c = db()
+    c.execute("UPDATE buttons SET unified_rating=? WHERE id=?", (new_val, bid))
     c.commit(); c.close()
     return bool(new_val)
 
@@ -833,6 +858,59 @@ async def send_item_rating_message(target, item, uid=None):
         return
     await target.reply_text(item_rating_text(iid, uid), reply_markup=kb_item_rating(iid))
 
+# ── تقييم موحد على مستوى الزر ────────────────────────────────────
+def get_btn_rating_summary(bid: int) -> dict:
+    row = db().execute(
+        "SELECT COUNT(*) AS cnt, COALESCE(AVG(rating),0) AS avg_rating FROM button_ratings WHERE button_id=?",
+        (bid,)
+    ).fetchone()
+    return {"count": row["cnt"] if row else 0, "avg": float(row["avg_rating"] or 0) if row else 0.0}
+
+def get_user_btn_rating(bid: int, uid: int):
+    row = db().execute(
+        "SELECT rating FROM button_ratings WHERE button_id=? AND user_id=?",
+        (bid, uid)
+    ).fetchone()
+    return row["rating"] if row else None
+
+def save_btn_rating(bid: int, uid: int, rating: int):
+    import time as _time
+    c = db()
+    c.execute(
+        "INSERT OR REPLACE INTO button_ratings(button_id,user_id,rating,rated_at) VALUES(?,?,?,?)",
+        (bid, uid, rating, int(_time.time()))
+    )
+    c.commit(); c.close()
+
+def btn_rating_text(bid: int, uid: int | None = None) -> str:
+    s = get_btn_rating_summary(bid)
+    if s["count"] == 0:
+        rating_line = "⭐ تقييم المحتوى: لا يوجد تقييم بعد"
+    else:
+        rating_line = f"⭐ تقييم المحتوى: {rating_stars(s['avg'])} {s['avg']:.1f}/5"
+    count_line = f"👥 عدد التقييمات: {s['count']}"
+    user_line = ""
+    if uid:
+        user_rating = get_user_btn_rating(bid, uid)
+        if user_rating:
+            user_line = f"\n✅ تقييمك: {user_rating}/5"
+    return f"{rating_line}\n{count_line}{user_line}"
+
+def kb_btn_rating(bid: int):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("⭐ قيّم المحتوى", callback_data=f"brate_open_{bid}")
+    ]])
+
+def kb_btn_rating_choices(bid: int):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⭐" * i, callback_data=f"brate_set_{bid}_{i}") for i in range(1, 4)],
+        [InlineKeyboardButton("⭐" * i, callback_data=f"brate_set_{bid}_{i}") for i in range(4, 6)],
+        [InlineKeyboardButton("رجوع", callback_data=f"brate_back_{bid}")],
+    ])
+
+async def send_btn_unified_rating_message(target, bid: int, uid=None):
+    await target.reply_text(btn_rating_text(bid, uid), reply_markup=kb_btn_rating(bid))
+
 # ── اكتشاف نوع المحتوى تلقائياً ─────────────────────────────────
 def detect_content(m):
     if m.photo:
@@ -1062,6 +1140,9 @@ def kb_content_panel(bid):
         no_btn_cap = (b.get("no_btn_caption", 0) or 0) if b else 0
         btn_cap_label = "✅ تفعيل كليشة الأزرار" if no_btn_cap else "🚫 إلغاء كليشة الأزرار"
         rows.append([InlineKeyboardButton(btn_cap_label, callback_data=f"ci_toggle_btn_cap_{bid}")])
+    unified = (b.get("unified_rating", 0) or 0) if b else 0
+    unified_label = "🔀 إلغاء توحيد التقييم" if unified else "⭐ توحيد التقييم"
+    rows.append([InlineKeyboardButton(unified_label, callback_data=f"ci_toggle_urating_{bid}")])
     rows.append([InlineKeyboardButton("✏️ تغيير الاسم", callback_data=f"el_{bid}")])
     rows.append([InlineKeyboardButton("🗑 حذف الزر",    callback_data=f"confirm_x_{bid}")])
     pid = b["parent_id"] if b else None
@@ -1099,6 +1180,9 @@ def kb_content_quick(bid):
         no_btn_cap = (b.get("no_btn_caption", 0) or 0) if b else 0
         btn_cap_label = "✅ تفعيل كليشة الأزرار" if no_btn_cap else "🚫 إلغاء كليشة الأزرار"
         rows.append([InlineKeyboardButton(btn_cap_label, callback_data=f"ci_toggle_btn_cap_{bid}")])
+    unified = (b.get("unified_rating", 0) or 0) if b else 0
+    unified_label = "🔀 إلغاء توحيد التقييم" if unified else "⭐ توحيد التقييم"
+    rows.append([InlineKeyboardButton(unified_label, callback_data=f"ci_toggle_urating_{bid}")])
     rows.append([InlineKeyboardButton("✏️ تغيير الاسم", callback_data=f"el_{bid}")])
     rows.append([InlineKeyboardButton("🗑 حذف",          callback_data=f"confirm_x_{bid}")])
     return InlineKeyboardMarkup(rows)
@@ -1530,9 +1614,10 @@ async def send_items(m, bid, uid=None, bot=None):
     no_btn_cap = (b.get("no_btn_caption", 0) or 0) if b else 0
     cap_btns = get_caption_buttons() if not no_btn_cap else []
     link_markup = build_caption_btn_markup(cap_btns)
+    unified = (b.get("unified_rating", 0) or 0) if b else 0
     for item in items:
         sent = await send_file_item(m, item, extra_caption=extra_cap, reply_markup=link_markup)
-        if sent and uid and not is_admin(uid):
+        if sent and uid and not is_admin(uid) and not unified:
             await send_item_rating_message(m, item, uid=uid)
 
     # إرسال عبارة تحفيزية عشوائية بعد المحتوى (للمستخدمين فقط)
@@ -1543,6 +1628,10 @@ async def send_items(m, bid, uid=None, bot=None):
                 await m.reply_text(phrase, message_effect_id="5046509860389126442")
             except Exception:
                 await m.reply_text(phrase)
+
+    # إرسال تقييم موحد واحد في الأسفل إذا كان توحيد التقييم مفعّلاً
+    if uid and not is_admin(uid) and unified:
+        await send_btn_unified_rating_message(m, bid, uid=uid)
 
 # ── /start ────────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx):
@@ -2313,6 +2402,39 @@ async def cb_manage(update: Update, ctx):
 
         return
 
+    # ── تقييم موحد على مستوى الزر (لجميع المستخدمين) ───────────────────
+    if d.startswith("brate_"):
+        if d.startswith("brate_open_"):
+            bid = int(d[len("brate_open_"):])
+            await q.answer()
+            await q.edit_message_text(
+                f"{btn_rating_text(bid, uid)}\n\nاختر تقييمك للمحتوى:",
+                reply_markup=kb_btn_rating_choices(bid)
+            )
+            return
+
+        if d.startswith("brate_back_"):
+            bid = int(d[len("brate_back_"):])
+            await q.answer()
+            await q.edit_message_text(btn_rating_text(bid, uid), reply_markup=kb_btn_rating(bid))
+            return
+
+        if d.startswith("brate_set_"):
+            parts = d[len("brate_set_"):].split("_")
+            bid = int(parts[0])
+            rating = int(parts[1])
+            if rating < 1 or rating > 5:
+                await q.answer("⚠️ تقييم غير صالح.", show_alert=True); return
+            save_btn_rating(bid, uid, rating)
+            await q.answer("✅ تم حفظ تقييمك")
+            await q.edit_message_text(
+                f"✅ شكراً على تقييمك!\n\n{btn_rating_text(bid, uid)}",
+                reply_markup=kb_btn_rating(bid)
+            )
+            return
+
+        return
+
     # ── معالجات التبرع بالنجوم (لجميع المستخدمين) ───────────────────────
     if d.startswith("don_"):
         await q.answer()
@@ -2789,6 +2911,20 @@ async def cb_manage(update: Update, ctx):
         items = get_items(bid)
         no_btn_cap = (b.get("no_btn_caption", 0) or 0) if b else 0
         status = "🚫 كليشة الأزرار مُلغاة لهذا الزر" if no_btn_cap else "✅ كليشة الأزرار مفعّلة لهذا الزر"
+        await q.edit_message_text(
+            f"📄 *{b['label']}*\n_{len(items)} عنصر_\n\n{status}",
+            parse_mode="Markdown",
+            reply_markup=kb_content_panel(bid)
+        )
+        return
+
+    if d.startswith("ci_toggle_urating_"):
+        bid = int(d[18:])
+        toggle_btn_unified_rating(bid)
+        b = get_btn(bid)
+        items = get_items(bid)
+        unified = (b.get("unified_rating", 0) or 0) if b else 0
+        status = "✅ توحيد التقييم مفعّل — سيظهر تقييم واحد في الأسفل بعد كل المحتوى" if unified else "⭕ توحيد التقييم مُلغى — سيظهر تقييم لكل ملف على حدة"
         await q.edit_message_text(
             f"📄 *{b['label']}*\n_{len(items)} عنصر_\n\n{status}",
             parse_mode="Markdown",

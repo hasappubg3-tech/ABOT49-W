@@ -187,6 +187,15 @@ def init_db():
                 break_min INTEGER DEFAULT 5
             );
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS item_ratings (
+                item_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                rating INTEGER NOT NULL,
+                rated_at INTEGER DEFAULT 0,
+                PRIMARY KEY (item_id, user_id)
+            );
+        """)
         c.commit()
         try:
             c.execute("ALTER TABLE buttons ADD COLUMN special_action TEXT DEFAULT NULL")
@@ -762,6 +771,67 @@ def get_item(iid):
     r = db().execute("SELECT * FROM content_items WHERE id=?", (iid,)).fetchone()
     return dict(r) if r else None
 
+def get_item_rating_summary(iid: int) -> dict:
+    row = db().execute(
+        "SELECT COUNT(*) AS cnt, COALESCE(AVG(rating),0) AS avg_rating FROM item_ratings WHERE item_id=?",
+        (iid,)
+    ).fetchone()
+    return {"count": row["cnt"] if row else 0, "avg": float(row["avg_rating"] or 0) if row else 0.0}
+
+def get_user_item_rating(iid: int, uid: int):
+    row = db().execute(
+        "SELECT rating FROM item_ratings WHERE item_id=? AND user_id=?",
+        (iid, uid)
+    ).fetchone()
+    return row["rating"] if row else None
+
+def save_item_rating(iid: int, uid: int, rating: int):
+    import time as _time
+    c = db()
+    c.execute(
+        "INSERT OR REPLACE INTO item_ratings(item_id,user_id,rating,rated_at) VALUES(?,?,?,?)",
+        (iid, uid, rating, int(_time.time()))
+    )
+    c.commit(); c.close()
+
+def rating_stars(avg: float) -> str:
+    filled = int(round(avg))
+    filled = max(0, min(5, filled))
+    return "★" * filled + "☆" * (5 - filled)
+
+def item_rating_text(iid: int, uid: int | None = None) -> str:
+    s = get_item_rating_summary(iid)
+    if s["count"] == 0:
+        rating_line = "⭐ تقييم الملف: لا يوجد تقييم بعد"
+    else:
+        rating_line = f"⭐ تقييم الملف: {rating_stars(s['avg'])} {s['avg']:.1f}/5"
+    count_line = f"👥 عدد التقييمات: {s['count']}"
+    user_line = ""
+    if uid:
+        user_rating = get_user_item_rating(iid, uid)
+        if user_rating:
+            user_line = f"\n✅ تقييمك: {user_rating}/5"
+    return f"{rating_line}\n{count_line}{user_line}"
+
+def kb_item_rating(iid: int):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("⭐ قيّم الملف", callback_data=f"rate_open_{iid}")
+    ]])
+
+def kb_item_rating_choices(iid: int):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⭐" * i, callback_data=f"rate_set_{iid}_{i}") for i in range(1, 6)],
+        [InlineKeyboardButton("رجوع", callback_data=f"rate_back_{iid}")],
+    ])
+
+async def send_item_rating_message(target, item, uid=None):
+    if item.get("type") == "text":
+        return
+    iid = item.get("id")
+    if not iid:
+        return
+    await target.reply_text(item_rating_text(iid, uid), reply_markup=kb_item_rating(iid))
+
 # ── اكتشاف نوع المحتوى تلقائياً ─────────────────────────────────
 def detect_content(m):
     if m.photo:
@@ -842,16 +912,14 @@ async def send_file_item(target, item, reply_markup=None, extra_caption=""):
         return msg
 
     if t == "text":
-        await target.reply_text(cap, **({"reply_markup": reply_markup} if reply_markup else {}))
-        return
+        return await target.reply_text(cap, **({"reply_markup": reply_markup} if reply_markup else {}))
 
     if fid:
         try:
-            await _send_from_fid()
-            return
+            return await _send_from_fid()
         except Exception:
             pass
-    await _send_from_local()
+    return await _send_from_local()
 
 # ── بناء لوحة مفاتيح الرد ────────────────────────────────────────
 ICON = {"menu": "📂", "content": "📄", "special": "⭐"}
@@ -1442,7 +1510,9 @@ async def send_items(m, bid, uid=None, bot=None):
     cap_btns = get_caption_buttons() if not no_btn_cap else []
     link_markup = build_caption_btn_markup(cap_btns)
     for item in items:
-        await send_file_item(m, item, extra_caption=extra_cap, reply_markup=link_markup)
+        sent = await send_file_item(m, item, extra_caption=extra_cap, reply_markup=link_markup)
+        if sent and uid and not is_admin(uid):
+            await send_item_rating_message(m, item, uid=uid)
 
     # إرسال عبارة تحفيزية عشوائية بعد المحتوى (للمستخدمين فقط)
     if uid and not is_admin(uid):
@@ -2174,6 +2244,41 @@ async def cb_manage(update: Update, ctx):
                     )
                 except Exception:
                     pass
+        return
+
+    # ── تقييم الملفات (لجميع المستخدمين) ────────────────────────────────
+    if d.startswith("rate_"):
+        if d.startswith("rate_open_"):
+            iid = int(d[len("rate_open_"):])
+            if not get_item(iid):
+                await q.answer("⚠️ الملف غير موجود.", show_alert=True); return
+            await q.answer()
+            await q.edit_message_text(
+                f"{item_rating_text(iid, uid)}\n\nاختر تقييمك للملف:",
+                reply_markup=kb_item_rating_choices(iid)
+            )
+            return
+
+        if d.startswith("rate_back_"):
+            iid = int(d[len("rate_back_"):])
+            await q.answer()
+            await q.edit_message_text(item_rating_text(iid, uid), reply_markup=kb_item_rating(iid))
+            return
+
+        if d.startswith("rate_set_"):
+            parts = d[len("rate_set_"):].split("_")
+            iid = int(parts[0])
+            rating = int(parts[1])
+            if rating < 1 or rating > 5 or not get_item(iid):
+                await q.answer("⚠️ تقييم غير صالح.", show_alert=True); return
+            save_item_rating(iid, uid, rating)
+            await q.answer("✅ تم حفظ تقييمك")
+            await q.edit_message_text(
+                f"✅ شكراً على تقييمك!\n\n{item_rating_text(iid, uid)}",
+                reply_markup=kb_item_rating(iid)
+            )
+            return
+
         return
 
     # ── معالجات التبرع بالنجوم (لجميع المستخدمين) ───────────────────────

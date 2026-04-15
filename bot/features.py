@@ -446,6 +446,34 @@ async def send_stars_invoice(bot, chat_id: int, stars: int):
         prices=[LabeledPrice(label=f"{stars} نجمة", amount=stars)],
     )
 
+def top_users_text() -> str:
+    """يُرجع نص يعرض أبرز 30 مستخدم حسب النشاط (مجموع الفتحات والجلسات) مع استبعاد المشرفين."""
+    admin_ids = [a["user_id"] for a in all_admins()]
+    placeholders = ",".join("?" * len(admin_ids)) if admin_ids else "NULL"
+    query = (
+        f"SELECT user_id, opens, sessions, (opens + sessions) AS activity "
+        f"FROM user_stats "
+        f"{'WHERE user_id NOT IN (' + placeholders + ')' if admin_ids else ''} "
+        f"ORDER BY activity DESC LIMIT 30"
+    )
+    rows = db().execute(query, admin_ids if admin_ids else []).fetchall()
+    if not rows:
+        return "🏆 *أبرز المستخدمين*\n\nلا توجد بيانات بعد."
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    lines = ["🏆 *أبرز المستخدمين نشاطاً*\n"]
+    for i, row in enumerate(rows, start=1):
+        medal = medals.get(i, f"{i}\\.")
+        uid_val = row["user_id"]
+        activity = row["activity"]
+        opens = row["opens"]
+        sessions = row["sessions"]
+        lines.append(
+            f"{medal} `{uid_val}` — {activity} نشاط "
+            f"_({opens} فتحة، {sessions} جلسة)_"
+        )
+    return "\n".join(lines)
+
+
 def _setup_pomodoro_feature():
     """يضبط زر 421 كحاوية وينشئ الأزرار الخاصة داخله إن لم تكن موجودة."""
     c = db()
@@ -507,6 +535,17 @@ def _setup_pomodoro_feature():
         c.execute(
             "INSERT INTO buttons(parent_id,type,label,ord,new_row,special_action) VALUES(?,?,?,?,?,?)",
             (421, "special", "📤 رفع ملف", len(ids)+1, 1, "file_upload")
+        )
+    existing_top_users = c.execute(
+        "SELECT id FROM buttons WHERE parent_id=421 AND special_action='top_users' LIMIT 1"
+    ).fetchone()
+    if not existing_top_users:
+        ids = [r[0] for r in c.execute(
+            "SELECT id FROM buttons WHERE parent_id=421 ORDER BY ord,id"
+        ).fetchall()]
+        c.execute(
+            "INSERT INTO buttons(parent_id,type,label,ord,new_row,special_action) VALUES(?,?,?,?,?,?)",
+            (421, "special", "🏆 أبرز المستخدمين", len(ids)+1, 1, "top_users")
         )
     c.execute("DELETE FROM buttons WHERE special_action='yt_search'")
     c.commit(); c.close()

@@ -988,6 +988,15 @@ async def on_message(update: Update, ctx):
                     parse_mode="Markdown",
                     reply_markup=kb_file_upload_cancel()
                 )
+        elif action == "top_users":
+            await m.reply_text(
+                top_users_text(),
+                parse_mode="Markdown"
+            )
+            if is_admin(uid):
+                await set_panel(ctx, chat_id,
+                                f"⭐ *{b['label']}* (#{b['id']})\n_زر أبرز المستخدمين_",
+                                kb_special_quick(b["id"]))
         else:
             if is_admin(uid):
                 await set_panel(ctx, chat_id,

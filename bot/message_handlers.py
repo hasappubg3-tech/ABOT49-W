@@ -990,6 +990,17 @@ async def on_message(update: Update, ctx):
         )
         return
 
+    # ── إحصائيات زر الامتحان الرئيسي ─────────────────────────────
+    if text == BTN_EXAM_STATS and not is_admin(uid):
+        parent_btn = get_btn(pid) if pid else None
+        if parent_btn and parent_btn["type"] == "exam_group":
+            await m.reply_text(
+                exam_group_text(pid, uid),
+                parse_mode="Markdown",
+                reply_markup=kb_exam_group_user(pid, uid)
+            )
+        return
+
     # ── إلغاء ─────────────────────────────────────────────────────
     if text == BTN_CANCEL:
         ctx.user_data.pop("state", None)
@@ -1119,6 +1130,11 @@ async def on_message(update: Update, ctx):
                             f"📝 *{b['label']}*\n_{len(questions)} سؤال_",
                             kb_exam_quick(b["id"]))
         else:
+            parent_btn = get_btn(b.get("parent_id")) if b.get("parent_id") else None
+            if parent_btn and parent_btn["type"] == "exam_group":
+                if not is_exam_topic_unlocked(uid, parent_btn["id"], b["id"]):
+                    await m.reply_text("🔒 أكمل الموضوع السابق أولاً.")
+                    return
             questions = get_exam_questions(b["id"])
             if not questions:
                 await m.reply_text("📭 لا توجد أسئلة في هذا الامتحان بعد.")
@@ -1133,7 +1149,12 @@ async def on_message(update: Update, ctx):
                             f"🎓 *{b['label']}*\n_زر امتحان رئيسي — أضف داخله أزرار اختبار كمواضيع._",
                             kb_exam_group_quick(b["id"]))
         else:
-            await m.reply_text(exam_group_text(b["id"], uid), parse_mode="Markdown", reply_markup=kb_exam_group_user(b["id"], uid))
+            ctx.user_data["pid"] = b["id"]
+            await m.reply_text(
+                exam_group_text(b["id"], uid),
+                parse_mode="Markdown",
+                reply_markup=build_exam_group_kb(uid, b["id"])
+            )
 
     elif b["type"] == "special":
         action = b.get("special_action")

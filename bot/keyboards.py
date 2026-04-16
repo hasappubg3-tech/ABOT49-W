@@ -198,6 +198,16 @@ def exam_group_text(bid, uid):
         "ابدأ بالموضوع الأول، وبعد إكماله ينفتح الموضوع التالي."
     )
 
+def build_exam_group_kb(uid, parent_bid):
+    """كيبورد ثابت يظهر للمستخدم عند الدخول لزر امتحان رئيسي."""
+    topics = get_exam_topics(parent_bid)
+    rows = []
+    for topic in topics:
+        rows.append([KeyboardButton(topic['label'])])
+    rows.append([KeyboardButton(BTN_EXAM_STATS)])
+    rows.append([KeyboardButton(BTN_BACK), KeyboardButton(BTN_HOME)])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
 def kb_exam_group_user(bid, uid):
     rows = []
     topics = get_exam_topics(bid)

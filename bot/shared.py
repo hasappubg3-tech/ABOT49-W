@@ -39,11 +39,12 @@ BTN_CANCEL   = "❌ إلغاء"
 BTN_SETTINGS = "⚙️ الاعدادات"
 
 BTN_SWAP = "🔀 تغيير"
+BTN_EXAM_STATS = "📊 إحصائياتي"
 
 ADMIN_BTNS   = {BTN_ADMINS}
 BTN_PLUS = "➕"
 SPECIAL_BTNS = {BTN_BACK, BTN_HOME, BTN_ADD, BTN_MANAGE, BTN_ADMINS, BTN_CANCEL, BTN_SWAP, BTN_PLUS,
-                BTN_SETTINGS, "📂 قائمة", "📄 محتوى"}
+                BTN_SETTINGS, "📂 قائمة", "📄 محتوى", BTN_EXAM_STATS}
 
 _SUP_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
 _SUP_MAP    = {c: str(i) for i, c in enumerate(_SUP_DIGITS)}

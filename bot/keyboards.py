@@ -235,6 +235,7 @@ def exam_group_stats_text(bid, uid):
             f"   🏅 درجتي: *{degree}/100*\n"
             f"   🧩 المجابة: *{answered}/{total}* | ✅ *{correct}* | ❌ *{wrong}*"
         )
+    lines.append("\nملاحظة: يمكن تعديل درجتك خلال إعادة الامتحان.")
     return "\n".join(lines)
 
 def build_exam_group_kb(uid, parent_bid):

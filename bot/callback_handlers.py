@@ -839,7 +839,7 @@ async def cb_manage(update: Update, ctx):
             btns.insert(0, [InlineKeyboardButton("🗑 إزالة القناة", callback_data="st_storage_channel_clear")])
         await q.edit_message_text(
             f"📦 *قناة تخزين الملفات*{cur_text}\n\n"
-            "أرسل *معرّف القناة* (مثال: `-1001234567890`)\n\n"
+            "حوّل أي منشور من القناة إلى هنا وسيتم اكتشاف المعرّف تلقائياً.\n\n"
             "⚠️ _تأكد أن البوت مضاف كأدمن في القناة._",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(btns)

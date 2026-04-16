@@ -482,9 +482,13 @@ async def on_message(update: Update, ctx):
 
     # ── انتظار معرّف قناة التخزين ────────────────────────────────
     if state == "wait_storage_channel":
-        if not m.text or m.text in SPECIAL_BTNS:
-            await m.reply_text("⚠️ أرسل معرّف القناة (مثال: -1001234567890)."); return
-        ch = m.text.strip()
+        ch = None
+        if m.forward_from_chat and m.forward_from_chat.type == "channel":
+            ch = str(m.forward_from_chat.id)
+        elif m.text and m.text.strip() not in SPECIAL_BTNS:
+            ch = m.text.strip()
+        if not ch:
+            await m.reply_text("⚠️ أرسل معرّف القناة أو حوّل أي منشور منها."); return
         set_setting("storage_channel_id", ch)
         ctx.user_data.pop("state", None)
         await set_panel(ctx, chat_id, "⚙️ *الإعدادات*", kb_settings())

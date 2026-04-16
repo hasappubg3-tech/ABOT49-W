@@ -483,8 +483,9 @@ async def on_message(update: Update, ctx):
     # ── انتظار معرّف قناة التخزين ────────────────────────────────
     if state == "wait_storage_channel":
         ch = None
-        if m.forward_from_chat and m.forward_from_chat.type == "channel":
-            ch = str(m.forward_from_chat.id)
+        fo = getattr(m, "forward_origin", None)
+        if fo and getattr(fo, "type", None) == "channel":
+            ch = str(fo.chat.id)
         elif m.text and m.text.strip() not in SPECIAL_BTNS:
             ch = m.text.strip()
         if not ch:

@@ -405,16 +405,20 @@ def kb_compound_user(bid):
 
 
 def _kb_compound_panel_rows(bid, with_back=True):
-    """الصفوف المشتركة لإدارة الزر المدمج. كل زر داخلي له خياراته الخاصة."""
+    """الصفوف المشتركة لإدارة الزر المدمج. الأزرار الداخلية تُعرض بنفس ترتيبها كما يراها المستخدم."""
     b = get_btn(bid)
     children = get_buttons(bid)
     rows = []
-    for ch in children:
+    # نعرض الأزرار الداخلية بالترتيب الحقيقي (نحترم new_row) — الضغط على أي زر يفتح لوحة محتواه
+    current_row = []
+    for i, ch in enumerate(children):
         items_count = len(get_items(ch["id"]))
-        rows.append([
-            InlineKeyboardButton(f"📄 {ch['label']} ({items_count})", callback_data=f"e_{ch['id']}"),
-            InlineKeyboardButton("🗑", callback_data=f"confirm_x_{ch['id']}"),
-        ])
+        btn = InlineKeyboardButton(f"📄 {ch['label']} ({items_count})", callback_data=f"e_{ch['id']}")
+        if i > 0 and ch.get("new_row", 1) and current_row:
+            rows.append(current_row); current_row = []
+        current_row.append(btn)
+    if current_row:
+        rows.append(current_row)
     if not children:
         rows.append([InlineKeyboardButton("📭 لا توجد أزرار داخلية بعد", callback_data="noop")])
     if children:
@@ -422,6 +426,8 @@ def _kb_compound_panel_rows(bid, with_back=True):
             InlineKeyboardButton("➕ سطر جديد", callback_data=f"cmp_add_n_{bid}"),
             InlineKeyboardButton("➕ نفس السطر", callback_data=f"cmp_add_s_{bid}"),
         ])
+        if len(children) >= 2:
+            rows.append([InlineKeyboardButton("↔️ تبديل موضع زرين", callback_data=f"cmp_swap_{bid}")])
     else:
         rows.append([InlineKeyboardButton("➕ إضافة زر داخلي", callback_data=f"cmp_add_n_{bid}")])
     rows.append([InlineKeyboardButton("✏️ تعديل نص الرسالة", callback_data=f"cmp_text_{bid}")])
@@ -432,6 +438,31 @@ def _kb_compound_panel_rows(bid, with_back=True):
         pid = b["parent_id"] if b else None
         rows.append([InlineKeyboardButton("رجوع", callback_data="m_r" if pid is None else f"m_{pid}")])
     return rows
+
+
+def kb_compound_swap_pick(bid, first=None):
+    """اختيار زرين لتبديل موضعهما داخل الزر المدمج. first=None = نختار الأول."""
+    children = get_buttons(bid)
+    rows = []
+    current_row = []
+    for i, ch in enumerate(children):
+        if first is not None and ch["id"] == first:
+            label = f"✅ {ch['label']}"
+            cb = "noop"
+        else:
+            label = ch["label"]
+            if first is None:
+                cb = f"cmp_swap1_{bid}_{ch['id']}"
+            else:
+                cb = f"cmp_swap2_{bid}_{first}_{ch['id']}"
+        btn = InlineKeyboardButton(label, callback_data=cb)
+        if i > 0 and ch.get("new_row", 1) and current_row:
+            rows.append(current_row); current_row = []
+        current_row.append(btn)
+    if current_row:
+        rows.append(current_row)
+    rows.append([InlineKeyboardButton("إلغاء", callback_data=f"e_{bid}")])
+    return InlineKeyboardMarkup(rows)
 
 
 def kb_compound_manage(bid):

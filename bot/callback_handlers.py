@@ -1625,6 +1625,37 @@ async def cb_manage(update: Update, ctx):
             parse_mode="Markdown", reply_markup=kb_cancel_inline())
         return
 
+    # تبديل موضع زرين داخل الزر المدمج
+    if d.startswith("cmp_swap_"):
+        bid = int(d[len("cmp_swap_"):])
+        b = get_btn(bid)
+        await q.edit_message_text(
+            f"↔️ *تبديل موضع زرين* — {b['label'] if b else ''}\n\nاختر **الزر الأول** الذي تريد تبديله:",
+            parse_mode="Markdown", reply_markup=kb_compound_swap_pick(bid))
+        return
+
+    if d.startswith("cmp_swap1_"):
+        rest = d[len("cmp_swap1_"):]
+        bid_s, first_s = rest.split("_", 1)
+        bid = int(bid_s); first = int(first_s)
+        b = get_btn(bid); fb = get_btn(first)
+        await q.edit_message_text(
+            f"↔️ *تبديل موضع زرين* — {b['label'] if b else ''}\n\nالأول: *{fb['label'] if fb else ''}*\nاختر **الزر الثاني**:",
+            parse_mode="Markdown", reply_markup=kb_compound_swap_pick(bid, first=first))
+        return
+
+    if d.startswith("cmp_swap2_"):
+        rest = d[len("cmp_swap2_"):]
+        bid_s, first_s, second_s = rest.split("_", 2)
+        bid = int(bid_s); first = int(first_s); second = int(second_s)
+        swap_btns(first, second)
+        b = get_btn(bid)
+        children = get_buttons(bid)
+        await q.edit_message_text(
+            f"🧩 *{b['label'] if b else 'زر مدمج'}*\n_{len(children)} زر داخلي_\n\n✅ تم تبديل موضع الزرين.",
+            parse_mode="Markdown", reply_markup=kb_compound_manage(bid))
+        return
+
     if d.startswith("cmp_preview_"):
         bid = int(d[len("cmp_preview_"):])
         b = get_btn(bid)

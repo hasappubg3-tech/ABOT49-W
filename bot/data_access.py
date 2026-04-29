@@ -367,35 +367,38 @@ def _renumber(cur, ids):
         cur.execute("UPDATE buttons SET ord=? WHERE id=?", (i + 1, bid))
 
 def add_btn(pid, t, label):
-    """يضيف زراً في نهاية القائمة."""
+    """يضيف زراً في نهاية القائمة. أزرار المحتوى تفعّل توحيد التقييم تلقائياً."""
     c = db(); cur = c.cursor()
     ids = _siblings(cur, pid)
-    cur.execute("INSERT INTO buttons(parent_id,type,label,ord) VALUES(?,?,?,?)",
-                (pid, t, label, len(ids) + 1))
+    ur = 1 if t == "content" else 0
+    cur.execute("INSERT INTO buttons(parent_id,type,label,ord,unified_rating) VALUES(?,?,?,?,?)",
+                (pid, t, label, len(ids) + 1, ur))
     lid = cur.lastrowid; c.commit(); c.close(); return lid
 
 def add_btn_before(before_bid, pid, t, label):
-    """يضيف زراً في صف جديد قبل before_bid مباشرة."""
+    """يضيف زراً في صف جديد قبل before_bid مباشرة. أزرار المحتوى تفعّل توحيد التقييم تلقائياً."""
     c = db(); cur = c.cursor()
     ids = _siblings(cur, pid)
     pos = ids.index(before_bid) if before_bid in ids else 0
-    cur.execute("INSERT INTO buttons(parent_id,type,label,ord,new_row) VALUES(?,?,?,?,?)",
-                (pid, t, label, 0, 1))
+    ur = 1 if t == "content" else 0
+    cur.execute("INSERT INTO buttons(parent_id,type,label,ord,new_row,unified_rating) VALUES(?,?,?,?,?,?)",
+                (pid, t, label, 0, 1, ur))
     new_id = cur.lastrowid
     ids.insert(pos, new_id)
     _renumber(cur, ids)
     c.commit(); c.close(); return new_id
 
 def add_btn_after(after_bid, pid, t, label, new_row=1):
-    """يضيف زراً بعد after_bid، أو في البداية إذا كان after_bid=None."""
+    """يضيف زراً بعد after_bid، أو في البداية إذا كان after_bid=None. أزرار المحتوى تفعّل توحيد التقييم تلقائياً."""
     c = db(); cur = c.cursor()
     ids = _siblings(cur, pid)
     if after_bid is None:
         pos = 0
     else:
         pos = (ids.index(after_bid) + 1) if after_bid in ids else len(ids)
-    cur.execute("INSERT INTO buttons(parent_id,type,label,ord,new_row) VALUES(?,?,?,?,?)",
-                (pid, t, label, 0, new_row))
+    ur = 1 if t == "content" else 0
+    cur.execute("INSERT INTO buttons(parent_id,type,label,ord,new_row,unified_rating) VALUES(?,?,?,?,?,?)",
+                (pid, t, label, 0, new_row, ur))
     new_id = cur.lastrowid
     ids.insert(pos, new_id)
     _renumber(cur, ids)

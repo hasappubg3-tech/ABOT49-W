@@ -266,7 +266,7 @@ def build_exam_group_kb(uid, parent_bid):
     for topic in topics:
         progress = get_exam_progress(uid, topic['id'])
         status = "✅" if progress.get("completed") else "❌"
-        rows.append([KeyboardButton(status + " " + topic['label'] + _encode_bid(topic['id']))])
+        rows.append([KeyboardButton(status + " " + topic['label'] + " " + status + _encode_bid(topic['id']))])
     rows.append([KeyboardButton(BTN_BACK), KeyboardButton(BTN_HOME)])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 

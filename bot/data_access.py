@@ -122,6 +122,11 @@ def get_btn_any(bid):
     """يجلب الزر حتى لو كان محذوفاً ناعماً."""
     return _d(_col("buttons").find_one({"id": bid}))
 
+def get_btn_by_label(label):
+    """بحث عن أي زر بواسطة الاسم في كل قاعدة البيانات."""
+    doc = _col("buttons").find_one({"label": label, "deleted": {"$ne": 1}})
+    return _d(doc)
+
 def _siblings_ids(pid):
     docs = _col("buttons").find(
         {"parent_id": pid, "deleted": {"$ne": 1}} if pid is not None else {"parent_id": None, "deleted": {"$ne": 1}}

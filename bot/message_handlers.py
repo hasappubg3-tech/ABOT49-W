@@ -1260,12 +1260,17 @@ async def on_message(update: Update, ctx):
             return
 
     # ── ضغط زر من القائمة ─────────────────────────────────────────
+    # تنظيف علامات الحالة ✅/❌ من بداية ونهاية النص (تُضاف لأزرار الامتحانات)
+    import re as _re
+    _clean = _re.sub(r'^[✅❌]\s*', '', text)
+    _clean = _re.sub(r'\s*[✅❌]$', '', _clean).strip()
+
     matched = None
     # أولاً: لو حملت الرسالة بصمة الزر غير المرئية فاللوكاب يكون مباشرًا
     # ومضموناً لا يتأثر بكشف الأزرار المتشابهة الاسم في أماكن مختلفة.
     if marker_bid is not None:
         matched = get_btn(marker_bid)
-        if matched and matched.get("label") != text:
+        if matched and matched.get("label") not in (text, _clean):
             # حماية إضافية: لو تم تعديل اسم الزر بعد بناء الكيبورد، نتجاهل البصمة
             matched = None
         if matched:
@@ -1273,13 +1278,11 @@ async def on_message(update: Update, ctx):
 
     if not matched:
         btns = get_buttons(pid)
-        matched = next((b for b in btns if b['label'] == text), None)
+        matched = next((b for b in btns if b['label'] in (text, _clean)), None)
     if not matched:
-        # البوت أُعيد تشغيله وضاع الموقع، نبحث في كل الأزرار
-        all_btns = [dict(r) for r in db().execute(
-            "SELECT * FROM buttons WHERE label=?", (text,)).fetchall()]
-        if all_btns:
-            matched = all_btns[0]
+        # البوت أُعيد تشغيله وضاع الموقع، نبحث في كل الأزرار عبر MongoDB
+        matched = get_btn_by_label(text) or get_btn_by_label(_clean)
+        if matched:
             ctx.user_data["pid"] = matched.get("parent_id")
         else:
             return

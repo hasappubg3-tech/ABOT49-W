@@ -18,15 +18,23 @@ def _is_clear_subject(subject: str) -> bool:
 
 def _strip_emoji(text: str) -> str:
     """يُزيل الرموز التعبيرية والأيقونات من النص."""
-    cleaned = _re.sub(
-        r'[\U0001F000-\U0001FFFF'
-        r'\U00002700-\U000027BF'
-        r'\U00002600-\U000026FF'
-        r'\U00002300-\U000023FF'
-        r'\U00002B00-\U00002BFF'
-        r'\uFE00-\uFE0F]+',
-        '', text
-    )
+    if not text:
+        return text
+    import unicodedata
+    result = []
+    for ch in text:
+        cp = ord(ch)
+        cat = unicodedata.category(ch)
+        # احتفظ بالحروف العربية واللاتينية والأرقام والمسافات وعلامات الترقيم الأساسية
+        if (cat.startswith('L') or          # حروف
+                cat.startswith('N') or      # أرقام
+                cat == 'Zs' or             # مسافات
+                cat == 'Pd' or             # شرطة
+                cat == 'Po' or             # ترقيم
+                ch in ' \n\t:-|/()،,.'    # محارف مسموحة
+        ):
+            result.append(ch)
+    cleaned = ''.join(result)
     return _re.sub(r'\s+', ' ', cleaned).strip()
 
 _TYPE_KEYWORDS = {

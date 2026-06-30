@@ -758,6 +758,17 @@ async def finish_mlz_flow(m, ctx, uid, chat_id, bot):
     existing_children = get_buttons(teacher_btn['id'])
     duplicate = _fuzzy_match(btn_name, existing_children)
     if duplicate:
+        if part:
+            # الملزمة لها جزء محدد → أضف الملف لنفس الزر الموجود تلقائياً
+            await _do_add_mlz(
+                wait_msg, ctx, bot,
+                teacher_btn['id'], btn_name, file_type, file_id, desc,
+                [grade_btn['label'], mlz_btn['label'], subject_btn['label'], teacher_btn['label'], duplicate['label']],
+                existing_bid=duplicate['id']
+            )
+            _clear_mlz(ctx)
+            return
+        # لا يوجد جزء محدد → اسأل المشرف لتأكيد التكرار
         await wait_msg.edit_text(
             f"⚠️ *يوجد ملزمة مشابهة بالفعل!*\n\n"
             f"الاسم الموجود: `{duplicate['label']}`\n\n"
@@ -783,13 +794,21 @@ async def finish_mlz_flow(m, ctx, uid, chat_id, bot):
     )
     _clear_mlz(ctx)
 
-async def _do_add_mlz(wait_msg, ctx, bot, teacher_bid, btn_name, file_type, file_id, desc, path_parts):
+async def _do_add_mlz(wait_msg, ctx, bot, teacher_bid, btn_name, file_type, file_id, desc, path_parts, existing_bid=None):
     from .content_delivery import upload_to_channel
-    content_bid = add_btn(teacher_bid, 'content', btn_name)
+    # إذا مُرِّر existing_bid → أضف لزر موجود بدلاً من إنشاء زر جديد
+    if existing_bid:
+        content_bid = existing_bid
+        created_new = False
+    else:
+        content_bid = add_btn(teacher_bid, 'content', btn_name)
+        created_new = True
+
     channel_msg_id = await upload_to_channel(bot, file_id, file_type, desc)
 
     if get_storage_channel_id() and not channel_msg_id:
-        del_btn(content_bid)
+        if created_new:
+            del_btn(content_bid)
         await wait_msg.edit_text(
             "⚠️ لم يتم الحفظ لأن رفع الملف لقناة التخزين فشل.\n"
             "تأكد أن البوت أدمن في قناة التخزين."
@@ -798,9 +817,11 @@ async def _do_add_mlz(wait_msg, ctx, bot, teacher_bid, btn_name, file_type, file
 
     add_item(content_bid, file_type, desc, file_id, None, channel_msg_id)
     path_str = " ← ".join(path_parts)
+    note = "" if created_new else "📎 *أُضيف لنفس زر المحتوى الموجود*\n\n"
 
     await wait_msg.edit_text(
         f"✅ *تمت الإضافة بنجاح!*\n\n"
+        f"{note}"
         f"📂 *الموقع:*\n`{path_str}`\n\n"
         f"📝 *الوصف:*\n`{desc}`",
         parse_mode='Markdown'

@@ -132,6 +132,9 @@ def ses_toggle_comments(rid: int) -> bool:
     _col_r().update_one({"id": rid}, {"$set": {"comments_open": new_val}})
     return new_val
 
+def ses_update_room_times(rid: int, study_time: int, break_time: int):
+    _col_r().update_one({"id": rid}, {"$set": {"study_time": study_time, "break_time": break_time}})
+
 # ══════════════════════════════════════════════════════════════════
 # إدارة الجلسة
 # ══════════════════════════════════════════════════════════════════
@@ -414,11 +417,7 @@ def kb_ses_room(room, uid: int, is_in: bool) -> InlineKeyboardMarkup:
     else:
         rows.append([InlineKeyboardButton("🚪 مغادرة الغرفة", callback_data=f"ses_leave_{rid}")])
     if is_in:
-        rows.append([
-            InlineKeyboardButton("👥 المشاركون", callback_data=f"ses_members_{rid}"),
-            InlineKeyboardButton("💬 التعليقات", callback_data=f"ses_chat_{rid}"),
-        ])
-    rows.append([InlineKeyboardButton("📊 الإحصائيات", callback_data=f"ses_room_stats_{rid}")])
+        rows.append([InlineKeyboardButton("💬 التعليقات", callback_data=f"ses_chat_{rid}")])
     if is_cr:
         rows.append([InlineKeyboardButton("⚙️ إعدادات الغرفة", callback_data=f"ses_settings_{rid}")])
     rows.append([InlineKeyboardButton("🔙 الغرف المتاحة", callback_data="ses_rooms")])
@@ -500,9 +499,32 @@ def kb_ses_member_actions(rid: int, target_uid: int, is_muted: bool,
 def kb_ses_settings(rid: int, comments_open: bool) -> InlineKeyboardMarkup:
     tog = "🔒 غلق التعليقات" if comments_open else "🔓 فتح التعليقات"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ تغيير اسم الغرفة", callback_data=f"ses_rename_{rid}")],
-        [InlineKeyboardButton(tog,                    callback_data=f"ses_stog_{rid}")],
-        [InlineKeyboardButton("🔙 رجوع",             callback_data=f"ses_room_{rid}")],
+        [InlineKeyboardButton("👥 المشاركون",          callback_data=f"ses_members_{rid}"),
+         InlineKeyboardButton("📊 الإحصائيات",         callback_data=f"ses_room_stats_{rid}")],
+        [InlineKeyboardButton("⏱ تعديل وقت الدراسة",  callback_data=f"ses_edit_times_{rid}")],
+        [InlineKeyboardButton("✏️ تغيير اسم الغرفة",  callback_data=f"ses_rename_{rid}")],
+        [InlineKeyboardButton(tog,                     callback_data=f"ses_stog_{rid}")],
+        [InlineKeyboardButton("🔙 رجوع",              callback_data=f"ses_room_{rid}")],
+    ])
+
+def kb_ses_edit_study_time(rid: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("25 دقيقة", callback_data=f"ses_edt_s_{rid}_25"),
+         InlineKeyboardButton("45 دقيقة", callback_data=f"ses_edt_s_{rid}_45")],
+        [InlineKeyboardButton("60 دقيقة", callback_data=f"ses_edt_s_{rid}_60"),
+         InlineKeyboardButton("90 دقيقة", callback_data=f"ses_edt_s_{rid}_90")],
+        [InlineKeyboardButton("✏️ وقت مخصص", callback_data=f"ses_edt_s_{rid}_c")],
+        [InlineKeyboardButton("🔙 إلغاء",    callback_data=f"ses_settings_{rid}")],
+    ])
+
+def kb_ses_edit_break_time(rid: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("5 دقائق",  callback_data=f"ses_edt_b_{rid}_5"),
+         InlineKeyboardButton("10 دقائق", callback_data=f"ses_edt_b_{rid}_10")],
+        [InlineKeyboardButton("15 دقيقة", callback_data=f"ses_edt_b_{rid}_15"),
+         InlineKeyboardButton("20 دقيقة", callback_data=f"ses_edt_b_{rid}_20")],
+        [InlineKeyboardButton("✏️ وقت مخصص", callback_data=f"ses_edt_b_{rid}_c")],
+        [InlineKeyboardButton("🔙 إلغاء",    callback_data=f"ses_settings_{rid}")],
     ])
 
 # ══════════════════════════════════════════════════════════════════
@@ -922,7 +944,68 @@ async def handle_ses_callback(q, ctx, uid: int, chat_id: int):
         if not room or room["creator_id"] != uid:
             await q.answer("❌ غير مصرح.", show_alert=True); return
         await q.edit_message_text(
-            f"⚙️ *إعدادات غرفة {room['name']}*",
+            f"⚙️ *إعدادات غرفة {room['name']}*\n\n"
+            f"📚 الدراسة: *{room['study_time']}د* | ☕ الاستراحة: *{room['break_time']}د*",
+            parse_mode="Markdown",
+            reply_markup=kb_ses_settings(rid, room.get("comments_open", True))); return
+
+    # ── تعديل وقت الدراسة ─────────────────────────────────────────
+    if d.startswith("ses_edit_times_"):
+        rid  = int(d[15:])
+        room = ses_get_room(rid)
+        if not room or room["creator_id"] != uid:
+            await q.answer("❌ غير مصرح.", show_alert=True); return
+        await q.edit_message_text(
+            f"⏱ *تعديل وقت الدراسة والاستراحة*\n\n"
+            f"الوقت الحالي: 📚 *{room['study_time']}د* | ☕ *{room['break_time']}د*\n\n"
+            "اختر وقت الدراسة الجديد:",
+            parse_mode="Markdown",
+            reply_markup=kb_ses_edit_study_time(rid)); return
+
+    # ── اختيار وقت الدراسة الجديد ─────────────────────────────────
+    if d.startswith("ses_edt_s_"):
+        rest    = d[10:]
+        rid_str, val = rest.rsplit("_", 1)
+        rid  = int(rid_str)
+        room = ses_get_room(rid)
+        if not room or room["creator_id"] != uid:
+            await q.answer("❌ غير مصرح.", show_alert=True); return
+        if val == "c":
+            ctx.user_data["state"]        = "wait_ses_edit_study"
+            ctx.user_data["ses_edit_rid"] = rid
+            await q.edit_message_text(
+                "⏱ أرسل وقت الدراسة الجديد بالدقائق (5–180):",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("❌ إلغاء", callback_data=f"ses_settings_{rid}")]])); return
+        ctx.user_data["ses_edit_study"] = int(val)
+        await q.edit_message_text(
+            f"✅ وقت الدراسة: *{val} دقيقة*\n\n☕ اختر وقت الاستراحة الجديد:",
+            parse_mode="Markdown",
+            reply_markup=kb_ses_edit_break_time(rid)); return
+
+    # ── اختيار وقت الاستراحة الجديد ───────────────────────────────
+    if d.startswith("ses_edt_b_"):
+        rest    = d[10:]
+        rid_str, val = rest.rsplit("_", 1)
+        rid  = int(rid_str)
+        room = ses_get_room(rid)
+        if not room or room["creator_id"] != uid:
+            await q.answer("❌ غير مصرح.", show_alert=True); return
+        if val == "c":
+            ctx.user_data["state"]        = "wait_ses_edit_break"
+            ctx.user_data["ses_edit_rid"] = rid
+            await q.edit_message_text(
+                "☕ أرسل وقت الاستراحة الجديد بالدقائق (1–60):",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("❌ إلغاء", callback_data=f"ses_settings_{rid}")]])); return
+        study = ctx.user_data.pop("ses_edit_study", None) or room["study_time"]
+        brk   = int(val)
+        ses_update_room_times(rid, study, brk)
+        room  = _get_room_any(rid)
+        await q.answer(f"✅ تم التحديث: {study}د دراسة / {brk}د استراحة", show_alert=True)
+        await q.edit_message_text(
+            f"⚙️ *إعدادات غرفة {room['name']}*\n\n"
+            f"📚 الدراسة: *{room['study_time']}د* | ☕ الاستراحة: *{room['break_time']}د*",
             parse_mode="Markdown",
             reply_markup=kb_ses_settings(rid, room.get("comments_open", True))); return
 

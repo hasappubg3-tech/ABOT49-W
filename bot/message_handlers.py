@@ -974,6 +974,46 @@ async def on_message(update: Update, ctx):
         )
         return
 
+    if state == "wait_ses_edit_study":
+        try:
+            val = int(text.strip())
+            if not (5 <= val <= 180):
+                raise ValueError
+        except ValueError:
+            await m.reply_text("⚠️ أرسل رقماً بين 5 و 180."); return
+        rid = ctx.user_data.get("ses_edit_rid")
+        if not rid:
+            await m.reply_text("⚠️ حدث خطأ. حاول مجدداً."); return
+        ctx.user_data["ses_edit_study"] = val
+        ctx.user_data.pop("state", None)
+        await m.reply_text(
+            f"✅ وقت الدراسة: *{val} دقيقة*\n\n☕ اختر وقت الاستراحة الجديد:",
+            parse_mode="Markdown",
+            reply_markup=kb_ses_edit_break_time(rid),
+        )
+        return
+
+    if state == "wait_ses_edit_break":
+        try:
+            val = int(text.strip())
+            if not (1 <= val <= 60):
+                raise ValueError
+        except ValueError:
+            await m.reply_text("⚠️ أرسل رقماً بين 1 و 60."); return
+        rid   = ctx.user_data.pop("ses_edit_rid", None)
+        study = ctx.user_data.pop("ses_edit_study", None)
+        ctx.user_data.pop("state", None)
+        if not rid or not study:
+            await m.reply_text("⚠️ حدث خطأ. حاول مجدداً."); return
+        ses_update_room_times(rid, study, val)
+        await m.reply_text(
+            f"✅ *تم تحديث الأوقات!*\n\n"
+            f"📚 وقت الدراسة: *{study} دقيقة*\n"
+            f"☕ وقت الاستراحة: *{val} دقيقة*",
+            parse_mode="Markdown",
+        )
+        return
+
     if state == "wait_ses_break_time":
         try:
             val = int(text.strip())

@@ -1,8 +1,5 @@
 python-telegram-bot[job-queue,webhooks]==20.7
-flask
 requests
 httpx~=0.25.2
 pymongo
 dnspython
-email_validator
-gunicorn

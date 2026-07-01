@@ -296,7 +296,6 @@ async def on_message(update: Update, ctx):
                 await wait_msg.edit_text(
                     answer,
                     reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🗑 مسح المحادثة", callback_data="ai_chat_clear"),
                         InlineKeyboardButton("❌ إنهاء", callback_data="ai_chat_end"),
                     ]])
                 )
@@ -304,7 +303,6 @@ async def on_message(update: Update, ctx):
                 await m.reply_text(
                     answer,
                     reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🗑 مسح المحادثة", callback_data="ai_chat_clear"),
                         InlineKeyboardButton("❌ إنهاء", callback_data="ai_chat_end"),
                     ]])
                 )
@@ -2235,20 +2233,10 @@ async def on_message(update: Update, ctx):
                                 kb_special_quick(b["id"]))
             ctx.user_data["state"] = "ai_chat_mode"
             ctx.user_data["ai_chat_bid"] = b["id"]
-            memory_on = get_ai_memory_enabled()
-            memory_count = get_ai_memory_count()
-            memory_note = f"🧠 _الذاكرة مفعّلة — يتذكر آخر {memory_count} رسائل_" if memory_on else "🧠 _الذاكرة معطّلة — كل سؤال مستقل_"
             await m.reply_text(
-                f"🤖 *مساعد الذكاء الاصطناعي — السادس العلمي*\n\n"
-                "أهلاً! أنا مساعدك الذكي المتخصص في مناهج *السادس العلمي العراقي*.\n\n"
-                "📚 *يمكنني مساعدتك في:*\n"
-                "⚗️ الكيمياء • ⚡ الفيزياء • 📐 الرياضيات\n"
-                "🔬 الأحياء • 📖 العربية • 🌍 الإنجليزية • ☪️ التربية الإسلامية\n\n"
-                "✍️ أرسل سؤالك نصاً أو صورة وسأجيبك فوراً!\n\n"
-                f"{memory_note}",
-                parse_mode="Markdown",
+                "مرحباً، أقدر أحلّ أي سؤال من مناهج السادس العلمي.\n"
+                "أرسل سؤالك نصاً أو صورة.",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🗑 مسح المحادثة", callback_data="ai_chat_clear"),
                     InlineKeyboardButton("❌ إنهاء", callback_data="ai_chat_end"),
                 ]])
             )

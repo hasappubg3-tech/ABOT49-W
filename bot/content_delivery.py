@@ -273,12 +273,28 @@ async def send_items(m, bid, uid=None, bot=None):
         # حظر مؤقت بعد التمادي في رفض الاشتراك
         remaining = get_file_block_remaining(uid)
         if remaining > 0:
-            mins = max(1, (remaining + 59) // 60)
-            try:
-                await m.reply_text(f"⏳ مزاعلين، ما زلت محظوراً عن استلام الملفات لمدة {mins} دقيقة تقريباً.")
-            except Exception:
-                pass
-            return
+            # إذا اشترك المستخدم فعلاً أثناء فترة الحظر — نرفع الحظر فوراً ونشكره
+            sub_now = await is_subscribed(bot, uid) if bot else None
+            if sub_now is True:
+                record_channel_subscription(uid)
+                clear_file_block(uid)
+                reset_notif_no_count(uid)
+                clear_pending_notif(uid)
+                try:
+                    await m.reply_text(
+                        "✅ *شكراً لك!*\n\nيمكنك الآن الاستمرار في التصفح.",
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    pass
+                # نستمر بالتنفيذ الطبيعي لإرسال المحتوى المطلوب أدناه
+            else:
+                mins = max(1, (remaining + 59) // 60)
+                try:
+                    await m.reply_text(f"⏳ مزاعلين، ما ارد عليك لمدة {mins} دقيقة .")
+                except Exception:
+                    pass
+                return
 
         # النظام 1: هل هناك تنبيه منبثق معلق؟
         pending_bid = get_pending_notif(uid)

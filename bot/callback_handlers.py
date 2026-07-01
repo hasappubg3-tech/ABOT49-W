@@ -228,7 +228,7 @@ async def cb_manage(update: Update, ctx):
 
             # ── مرة 1 → منبثقة + حذف الرسالة + تسليم الملف ─────────
             if no_count == 1:
-                await q.answer("طيب ما عليك 🙂", show_alert=True)
+                await q.answer("😔", show_alert=True)
                 try: await q.message.delete()
                 except Exception: pass
                 await deliver_denied_content(ctx.bot, chat_id_v, bid_str)

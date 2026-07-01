@@ -712,6 +712,14 @@ def kb_notif1_settings():
         InlineKeyboardButton(f'زر "نعم": {ok_text}',    callback_data="st_notif_ok_text"),
         InlineKeyboardButton(f'زر "لا": {cancel_text}', callback_data="st_notif_cancel_text"),
     ])
+    has_stickers = bool(get_setting("notif_decline_stickers", "").strip())
+    has_texts    = bool(get_setting("notif_decline_texts", "").strip())
+    sticker_lbl  = "🎭 ملصقات الرفض ✅" if has_stickers else "🎭 ملصقات الرفض"
+    texts_lbl    = "💬 نصوص الرفض ✅"   if has_texts    else "💬 نصوص الرفض"
+    rows.append([
+        InlineKeyboardButton(sticker_lbl, callback_data="st_notif_stickers"),
+        InlineKeyboardButton(texts_lbl,   callback_data="st_notif_dec_texts"),
+    ])
     rows.append([InlineKeyboardButton("رجوع", callback_data="st_back")])
     return InlineKeyboardMarkup(rows)
 

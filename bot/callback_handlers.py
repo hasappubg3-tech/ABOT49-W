@@ -10,16 +10,42 @@ async def cb_manage(update: Update, ctx):
         return
 
     # ── معالجة تنبيهات الاشتراك (لجميع المستخدمين) ───────────────
-    if d.startswith("notif_ok_") or d.startswith("notif_skip_"):
+    if (d.startswith("notif_ok_") or d.startswith("notif_skip_")
+            or d.startswith("notif_confirm_yes_") or d.startswith("notif_confirm_no_")):
+
+        # ─ زر "متأكد لا" (المرة الرابعة+) ─────────────────────────
+        if d.startswith("notif_confirm_no_"):
+            await q.answer("روح مزاعلين 😤", show_alert=True)
+            try: await q.message.delete()
+            except Exception: pass
+            return
+
+        # ─ زر "متأكد نعم" (المرة الرابعة+) ────────────────────────
+        if d.startswith("notif_confirm_yes_"):
+            try: await q.message.delete()
+            except Exception: pass
+            try:
+                await ctx.bot.send_message(
+                    chat_id=q.message.chat_id,
+                    text="احسك تريد تشترك بس مستحي 🙃",
+                )
+            except Exception: pass
+            chan = get_setting("notif_channel", "").strip()
+            if chan:
+                url = chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}"
+                try:
+                    await ctx.bot.send_message(chat_id=q.message.chat_id, text=url)
+                except Exception: pass
+            return
+
+        # ─ زر "نعم اشتركت" ─────────────────────────────────────────
         if d.startswith("notif_ok_"):
-            # التحقق الفعلي من الاشتراك قبل السماح بالمتابعة
-            # True=مشترك | False=غير مشترك | None=تعذّر الفحص (نعطي صلاحية المرور)
             sub_status = await is_subscribed(ctx.bot, uid)
             if sub_status is False:
-                chan = get_setting("notif_channel", "").strip()
+                chan        = get_setting("notif_channel", "").strip()
                 ok_text     = get_setting("notif_ok_text",    "✅ نعم، اشتركت")
                 cancel_text = get_setting("notif_cancel_text", "❌ لا، لاحقاً")
-                bid_str = d[len("notif_ok_"):]
+                bid_str     = d[len("notif_ok_"):]
                 rows = []
                 if chan:
                     url = chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}"
@@ -31,18 +57,16 @@ async def cb_manage(update: Update, ctx):
                 try:
                     await q.answer("❌ لم يتم التحقق من اشتراكك، يرجى الانضمام للقناة أولاً!", show_alert=True)
                     await q.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(rows))
-                except Exception:
-                    pass
+                except Exception: pass
                 return
-            # إما مشترك فعلاً أو تعذّر الفحص → نسمح بالمتابعة
+            # مشترك فعلاً أو تعذّر الفحص → نسمح بالمتابعة
             await q.answer()
             if sub_status is True:
                 record_channel_subscription(uid)
             clear_pending_notif(uid)
-            try:
-                await q.edit_message_reply_markup(reply_markup=None)
-            except Exception:
-                pass
+            ctx.user_data.pop("sub_no_count", None)
+            try: await q.edit_message_reply_markup(reply_markup=None)
+            except Exception: pass
             try:
                 await ctx.bot.send_message(
                     chat_id=q.message.chat_id,
@@ -57,31 +81,84 @@ async def cb_manage(update: Update, ctx):
                         text="✅ *شكراً لك!*\n\nيمكنك الآن الاستمرار في التصفح.",
                         parse_mode="Markdown"
                     )
-                except Exception:
-                    pass
-        else:
-            await q.answer()
-            clear_pending_notif(uid)
-            try:
-                await q.edit_message_reply_markup(reply_markup=None)
-            except Exception:
-                pass
-            try:
-                await ctx.bot.send_message(
-                    chat_id=q.message.chat_id,
-                    text="👌 *حسناً!*\n\nيمكنك الاستمرار في التصفح.",
-                    parse_mode="Markdown",
-                    api_kwargs={"message_effect_id": "5107584321108051014"}
-                )
-            except Exception:
+                except Exception: pass
+            return
+
+        # ─ زر "لا لاحقاً" ──────────────────────────────────────────
+        if d.startswith("notif_skip_"):
+            bid_str  = d[len("notif_skip_"):]
+            ok_text  = get_setting("notif_ok_text",    "✅ نعم، اشتركت")
+            can_text = get_setting("notif_cancel_text", "❌ لا، لاحقاً")
+            chan     = get_setting("notif_channel", "").strip()
+            no_count = ctx.user_data.get("sub_no_count", 0) + 1
+            ctx.user_data["sub_no_count"] = no_count
+
+            # مرة 1 → منبثقة
+            if no_count == 1:
+                await q.answer("حسنا ):", show_alert=True)
+                return
+
+            # مرة 2 → منبثقة
+            if no_count == 2:
+                await q.answer("ترا بديت ازعل منك /:", show_alert=True)
+                return
+
+            # مرة 3 → رسالة عادية مع زري نعم/لا
+            if no_count == 3:
+                await q.answer()
+                rows = []
+                if chan:
+                    url = chan if chan.startswith("http") else f"https://t.me/{chan.lstrip('@')}"
+                    rows.append([InlineKeyboardButton("📢 انضم للقناة الآن", url=url)])
+                rows.append([
+                    InlineKeyboardButton(ok_text,  callback_data=f"notif_ok_{bid_str}"),
+                    InlineKeyboardButton(can_text, callback_data=f"notif_skip_{bid_str}"),
+                ])
                 try:
                     await ctx.bot.send_message(
                         chat_id=q.message.chat_id,
-                        text="👌 *حسناً!*\n\nيمكنك الاستمرار في التصفح.",
-                        parse_mode="Markdown"
+                        text="متأكد ما تريد تشترك؟",
+                        reply_markup=InlineKeyboardMarkup(rows)
                     )
-                except Exception:
-                    pass
+                except Exception: pass
+                return
+
+            # مرة 4+ → رسالة تأكيد نعم/لا
+            await q.answer()
+            # مرة 6+ → ملصق + نص عشوائي أولاً
+            if no_count >= 6:
+                import random as _random
+                stickers_raw = get_setting("notif_decline_stickers", "")
+                texts_raw    = get_setting("notif_decline_texts", "")
+                stickers = [s.strip() for s in stickers_raw.split("\n") if s.strip()]
+                texts    = [t.strip() for t in texts_raw.split("\n") if t.strip()]
+                if stickers:
+                    try:
+                        await ctx.bot.send_sticker(
+                            chat_id=q.message.chat_id,
+                            sticker=_random.choice(stickers)
+                        )
+                    except Exception: pass
+                if texts:
+                    try:
+                        await ctx.bot.send_message(
+                            chat_id=q.message.chat_id,
+                            text=_random.choice(texts)
+                        )
+                    except Exception: pass
+
+            try:
+                await ctx.bot.send_message(
+                    chat_id=q.message.chat_id,
+                    text="متأكد ما تريد تشترك؟",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("نعم 😊", callback_data=f"notif_confirm_yes_{bid_str}"),
+                        InlineKeyboardButton("لا 😤",  callback_data=f"notif_confirm_no_{bid_str}"),
+                    ]])
+                )
+            except Exception: pass
+            return
+
         return
 
     # ── ملزمة: تأكيد / إلغاء / تعديل حقل / اختيار صف / اختيار نوع ─────
@@ -1528,6 +1605,53 @@ async def cb_manage(update: Update, ctx):
             parse_mode="Markdown",
             reply_markup=kb_cancel_inline()
         )
+        return
+
+    if d == "st_notif_stickers":
+        ctx.user_data["state"] = "wait_notif_stickers"
+        cur = get_setting("notif_decline_stickers", "")
+        cur_preview = f"\n\nالملصقات الحالية ({len([s for s in cur.split(chr(10)) if s.strip()])} ملصق):\n`{cur[:300]}`" if cur.strip() else "\n\nلا توجد ملصقات بعد."
+        await q.edit_message_text(
+            f"🎭 *ملصقات الرفض* (تظهر من المرة السادسة فصاعداً){cur_preview}\n\n"
+            "أرسل ملصقاً واحداً أو أكثر متتالياً، وعند الانتهاء أرسل /done\n"
+            "_أو أرسل /clear لمسح كل الملصقات_",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🗑 مسح الكل", callback_data="st_notif_stickers_clear"),
+                InlineKeyboardButton("❌ إلغاء",    callback_data="st_notif1"),
+            ]])
+        )
+        return
+
+    if d == "st_notif_stickers_clear":
+        set_setting("notif_decline_stickers", "")
+        ctx.user_data.pop("state", None)
+        await q.edit_message_text("✅ تم مسح ملصقات الرفض.", parse_mode="Markdown",
+                                  reply_markup=kb_notif1_settings())
+        return
+
+    if d == "st_notif_dec_texts":
+        ctx.user_data["state"] = "wait_notif_dec_texts"
+        cur = get_setting("notif_decline_texts", "")
+        lines = [t for t in cur.split("\n") if t.strip()]
+        cur_preview = f"\n\nالنصوص الحالية ({len(lines)}):\n" + "\n".join(f"• {l}" for l in lines[:5]) if lines else "\n\nلا توجد نصوص بعد."
+        await q.edit_message_text(
+            f"💬 *نصوص الرفض* (تظهر من المرة السادسة فصاعداً){cur_preview}\n\n"
+            "أرسل النصوص كل نص في سطر منفصل، وعند الانتهاء أرسل /done\n"
+            "_أو أرسل /clear لمسح كل النصوص_",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🗑 مسح الكل", callback_data="st_notif_dec_texts_clear"),
+                InlineKeyboardButton("❌ إلغاء",    callback_data="st_notif1"),
+            ]])
+        )
+        return
+
+    if d == "st_notif_dec_texts_clear":
+        set_setting("notif_decline_texts", "")
+        ctx.user_data.pop("state", None)
+        await q.edit_message_text("✅ تم مسح نصوص الرفض.", parse_mode="Markdown",
+                                  reply_markup=kb_notif1_settings())
         return
 
     if d == "st_notif_opens":

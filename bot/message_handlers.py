@@ -978,6 +978,76 @@ async def on_message(update: Update, ctx):
         await m.reply_text(f"✅ تم حفظ نص زر \"لا\": {m.text.strip()}", reply_markup=build_kb(uid, pid))
         return
 
+    # ── انتظار ملصقات الرفض ───────────────────────────────────────
+    if state == "wait_notif_stickers":
+        if not is_admin(uid):
+            return
+        # /done → حفظ وانتهاء
+        if m.text and m.text.strip() in ("/done", "done"):
+            ctx.user_data.pop("state", None)
+            ctx.user_data.pop("_stickers_buf", None)
+            await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif1_settings())
+            await m.reply_text("✅ تم حفظ الملصقات.", reply_markup=build_kb(uid, pid))
+            return
+        # /clear → مسح
+        if m.text and m.text.strip() in ("/clear", "clear"):
+            set_setting("notif_decline_stickers", "")
+            ctx.user_data.pop("state", None)
+            ctx.user_data.pop("_stickers_buf", None)
+            await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif1_settings())
+            await m.reply_text("🗑 تم مسح الملصقات.", reply_markup=build_kb(uid, pid))
+            return
+        # استقبل ملصق
+        if m.sticker:
+            file_id = m.sticker.file_id
+            cur = get_setting("notif_decline_stickers", "")
+            ids = [s.strip() for s in cur.split("\n") if s.strip()]
+            if file_id not in ids:
+                ids.append(file_id)
+                set_setting("notif_decline_stickers", "\n".join(ids))
+            await m.reply_text(
+                f"✅ تم إضافة الملصق ({len(ids)} إجمالاً).\n\nأرسل ملصقاً آخر أو أرسل /done للانتهاء.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("✅ انتهاء", callback_data="st_notif1")
+                ]])
+            )
+        else:
+            await m.reply_text("⚠️ أرسل ملصقاً (sticker)، أو أرسل /done للانتهاء.")
+        return
+
+    # ── انتظار نصوص الرفض ────────────────────────────────────────
+    if state == "wait_notif_dec_texts":
+        if not is_admin(uid):
+            return
+        if not m.text:
+            await m.reply_text("⚠️ أرسل نصاً، أو /done للانتهاء.")
+            return
+        txt = m.text.strip()
+        if txt in ("/done", "done"):
+            ctx.user_data.pop("state", None)
+            await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif1_settings())
+            await m.reply_text("✅ تم حفظ النصوص.", reply_markup=build_kb(uid, pid))
+            return
+        if txt in ("/clear", "clear"):
+            set_setting("notif_decline_texts", "")
+            ctx.user_data.pop("state", None)
+            await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif1_settings())
+            await m.reply_text("🗑 تم مسح النصوص.", reply_markup=build_kb(uid, pid))
+            return
+        # كل سطر = نص منفصل
+        new_lines = [l.strip() for l in txt.split("\n") if l.strip()]
+        cur = get_setting("notif_decline_texts", "")
+        existing = [l for l in cur.split("\n") if l.strip()]
+        existing.extend(new_lines)
+        set_setting("notif_decline_texts", "\n".join(existing))
+        ctx.user_data.pop("state", None)
+        await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif1_settings())
+        await m.reply_text(
+            f"✅ تم حفظ {len(new_lines)} نص/نصوص (الإجمالي: {len(existing)}).",
+            reply_markup=build_kb(uid, pid)
+        )
+        return
+
     # ── انتظار مفاتيح Gemini API ──────────────────────────────────
     if state == "wait_api_keys":
         if not m.text or m.text.strip() in SPECIAL_BTNS:

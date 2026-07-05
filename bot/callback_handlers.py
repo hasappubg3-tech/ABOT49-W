@@ -2632,6 +2632,18 @@ async def cb_manage(update: Update, ctx):
             parse_mode="Markdown", reply_markup=kb_compound_manage(bid))
         return
 
+    # ── تفعيل/إلغاء الترتيب التلقائي حسب السنة للزر المدمج ─────────
+    if d.startswith("cmp_sort_toggle_"):
+        bid = int(d[len("cmp_sort_toggle_"):])
+        new_val = toggle_sort_by_year(bid)
+        b = get_btn(bid)
+        children = get_buttons(bid)
+        status = "✅ الترتيب التلقائي حسب السنة مفعّل" if new_val else "⭕ الترتيب التلقائي حسب السنة مُلغى"
+        await q.edit_message_text(
+            f"{btn_id_header(bid)}🧩 *{b['label'] if b else 'زر مدمج'}*\n_{len(children)} زر داخلي_\n\n{status}",
+            parse_mode="Markdown", reply_markup=kb_compound_manage(bid))
+        return
+
     if d.startswith("cmp_preview_"):
         bid = int(d[len("cmp_preview_"):])
         b = get_btn(bid)

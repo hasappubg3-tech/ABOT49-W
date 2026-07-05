@@ -1,4 +1,39 @@
+import re as _re
 from .shared import *
+
+# ── ترتيب تلقائي حسب السنة والنوع للأزرار المدمجة ──────────────────
+_YEAR_RE = _re.compile(r'20\d{2}')
+
+# الأولويات: كل مجموعة من الكلمات المفتاحية تعكس نوع المحتوى
+_TYPE_PRIORITY = [
+    (['ملزمة', 'ملزمه', 'ملزم'],        0),
+    (['واجبات', 'واجب'],                 1),
+    (['وزاريات', 'وزارية', 'وزاري'],     2),
+    (['مراجعة', 'مراجعات'],              3),
+]
+
+def _year_key(label: str) -> int:
+    """يستخرج أعلى سنة من اسم الزر (0 إن لم توجد — يدعم نطاقات مثل 2023/2024)."""
+    matches = _YEAR_RE.findall(label)
+    return max(int(y) for y in matches) if matches else 0
+
+def _type_key(label: str) -> int:
+    """يُرجع رقم الأولوية حسب نوع المحتوى في اسم الزر."""
+    for keywords, order in _TYPE_PRIORITY:
+        for kw in keywords:
+            if kw in label:
+                return order
+    return 99
+
+def _sort_compound_children(children: list) -> list:
+    """يرتّب أزرار الزر المدمج: السنة الأحدث أولاً ثم النوع، زرين في كل صف."""
+    sorted_ch = sorted(children, key=lambda ch: (-_year_key(ch['label']), _type_key(ch['label'])))
+    result = []
+    for i, ch in enumerate(sorted_ch):
+        ch_copy = dict(ch)
+        ch_copy['_sorted_new_row'] = 1 if (i % 2 == 0) else 0
+        result.append(ch_copy)
+    return result
 
 def _btn_visible_for_user(b):
     """هل يُعرض هذا الزر للمستخدم العادي؟ لا إذا كان مخفياً يدوياً أو فارغاً تلقائياً."""
@@ -464,18 +499,34 @@ def kb_content_panel(bid):
 
 def kb_compound_user(bid):
     """الأزرار الداخلية للزر المدمج كما يراها المستخدم (مع إخفاء الفارغة والمخفية)."""
+    b = get_btn(bid)
     children = get_buttons(bid)
-    rows = []
-    current_row = []
-    for i, ch in enumerate(children):
-        if not _btn_visible_for_user(ch):
-            continue
-        btn = InlineKeyboardButton(ch["label"], callback_data=f"cmp_open_{ch['id']}")
-        if i > 0 and ch.get("new_row", 1) and current_row:
-            rows.append(current_row); current_row = []
-        current_row.append(btn)
-    if current_row:
-        rows.append(current_row)
+    sort_enabled = bool(b.get("sort_by_year", 0)) if b else False
+
+    visible = [ch for ch in children if _btn_visible_for_user(ch)]
+
+    if sort_enabled and visible:
+        sorted_visible = _sort_compound_children(visible)
+        rows = []
+        current_row = []
+        for ch in sorted_visible:
+            btn = InlineKeyboardButton(ch["label"], callback_data=f"cmp_open_{ch['id']}")
+            if ch['_sorted_new_row'] and current_row:
+                rows.append(current_row); current_row = []
+            current_row.append(btn)
+        if current_row:
+            rows.append(current_row)
+    else:
+        rows = []
+        current_row = []
+        for i, ch in enumerate(visible):
+            btn = InlineKeyboardButton(ch["label"], callback_data=f"cmp_open_{ch['id']}")
+            if i > 0 and ch.get("new_row", 1) and current_row:
+                rows.append(current_row); current_row = []
+            current_row.append(btn)
+        if current_row:
+            rows.append(current_row)
+
     if not rows:
         rows.append([InlineKeyboardButton("📭 لا توجد أزرار بعد", callback_data="noop")])
     return InlineKeyboardMarkup(rows)
@@ -510,7 +561,11 @@ def _kb_compound_panel_rows(bid, with_back=True):
     rows.append([InlineKeyboardButton("✏️ تعديل نص الرسالة", callback_data=f"cmp_text_{bid}")])
     rows.append([InlineKeyboardButton("👁 معاينة الرسالة", callback_data=f"cmp_preview_{bid}")])
     rows.append([InlineKeyboardButton("✏️ تغيير الاسم", callback_data=f"el_{bid}")])
-    if b: rows.append(_hidden_toggle_row(b))
+    if b:
+        rows.append(_hidden_toggle_row(b))
+        sort_on = bool(b.get("sort_by_year", 0))
+        sort_label = "🔀 ترتيب حسب السنوات: ✅ مفعّل" if sort_on else "🔀 ترتيب حسب السنوات: ⭕ مُلغى"
+        rows.append([InlineKeyboardButton(sort_label, callback_data=f"cmp_sort_toggle_{bid}")])
     rows.append([InlineKeyboardButton("🗑 حذف الزر", callback_data=f"confirm_x_{bid}")])
     if with_back:
         pid = b["parent_id"] if b else None

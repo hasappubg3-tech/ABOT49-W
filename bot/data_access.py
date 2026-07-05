@@ -212,6 +212,16 @@ def toggle_sort_by_year(bid):
     _col("buttons").update_one({"id": bid}, {"$set": {"sort_by_year": new_val}})
     return bool(new_val)
 
+def toggle_sort_alpha(bid):
+    """يفعّل / يلغي خاصية الترتيب الأبجدي التلقائي لأزرار القائمة."""
+    b = get_btn(bid)
+    if not b:
+        return False
+    current = b.get("sort_alpha", 0) or 0
+    new_val = 0 if current else 1
+    _col("buttons").update_one({"id": bid}, {"$set": {"sort_alpha": new_val}})
+    return bool(new_val)
+
 def del_btn(bid):
     _soft_delete_btn_recursive(bid)
 

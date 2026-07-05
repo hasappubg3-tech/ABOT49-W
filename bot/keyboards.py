@@ -35,6 +35,16 @@ def _sort_compound_children(children: list) -> list:
         result.append(ch_copy)
     return result
 
+def _sort_alpha_children(children: list) -> list:
+    """يرتّب أزرار القائمة أبجدياً، زرين في كل صف."""
+    sorted_ch = sorted(children, key=lambda ch: ch['label'])
+    result = []
+    for i, ch in enumerate(sorted_ch):
+        ch_copy = dict(ch)
+        ch_copy['new_row'] = 1 if (i % 2 == 0) else 0
+        result.append(ch_copy)
+    return result
+
 def _btn_visible_for_user(b):
     """هل يُعرض هذا الزر للمستخدم العادي؟ لا إذا كان مخفياً يدوياً أو فارغاً تلقائياً."""
     if b.get("hidden", 0):
@@ -65,6 +75,11 @@ def _quiz_status_label(label: str, bid: int, uid: int) -> str:
 def build_kb(uid, pid=None):
     btns = get_buttons(pid)
     admin = is_admin(uid)
+    if not admin:
+        btns = [b for b in btns if _btn_visible_for_user(b)]
+    parent_b = get_btn(pid) if pid is not None else None
+    if parent_b and parent_b.get("sort_alpha", 0) and btns:
+        btns = _sort_alpha_children(btns)
     rows = []
     current_row = []
     last_bid_in_row = None
@@ -78,8 +93,6 @@ def build_kb(uid, pid=None):
             except Exception:
                 quiz_results_map = {}
     for i, b in enumerate(btns):
-        if not admin and not _btn_visible_for_user(b):
-            continue
         if i > 0 and b.get('new_row', 1):
             if current_row:
                 if admin and last_bid_in_row is not None:
@@ -458,8 +471,12 @@ def kb_edit_menu_btn(bid):
     rows = [
         [InlineKeyboardButton("📂 فتح القائمة", callback_data=f"m_{bid}")],
         [InlineKeyboardButton("✏️ تغيير الاسم", callback_data=f"el_{bid}")],
-        [InlineKeyboardButton("🗑 حذف",          callback_data=f"confirm_x_{bid}")],
     ]
+    if b:
+        sort_on = bool(b.get("sort_alpha", 0))
+        sort_label = "🔤 ترتيب أبجدي: ✅ مفعّل" if sort_on else "🔤 ترتيب أبجدي: ⭕ مُلغى"
+        rows.append([InlineKeyboardButton(sort_label, callback_data=f"menu_sort_toggle_{bid}")])
+    rows.append([InlineKeyboardButton("🗑 حذف",          callback_data=f"confirm_x_{bid}")])
     pid = b["parent_id"] if b else None
     rows.append([InlineKeyboardButton("رجوع", callback_data="m_r" if pid is None else f"m_{pid}")])
     return InlineKeyboardMarkup(rows)

@@ -2191,6 +2191,15 @@ async def cb_manage(update: Update, ctx):
                                       reply_markup=kb_edit_menu_btn(bid))
         return
 
+    # ── تفعيل/إلغاء الترتيب الأبجدي لأزرار القائمة ─────────────────
+    if d.startswith("menu_sort_toggle_"):
+        bid = int(d[len("menu_sort_toggle_"):])
+        toggle_sort_alpha(bid)
+        b = get_btn(bid)
+        await q.edit_message_text(f"{btn_id_header(bid)}📂 *{b['label'] if b else ''}*", parse_mode="Markdown",
+                                  reply_markup=kb_edit_menu_btn(bid))
+        return
+
     # ── إدارة الكويز ──────────────────────────────────────────────
     if d.startswith("qz_"):
         await q.answer()

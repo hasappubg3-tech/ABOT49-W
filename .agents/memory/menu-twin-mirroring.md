@@ -36,3 +36,11 @@ IDs, not a generic reusable system.
   into them (recording twin pairs node-by-node) lives at
   `scripts/migrate_link_menus.py` — reusable as a template if another pair
   ever needs the same bootstrap.
+- **Link-on-clone UX (new):** after any clone operation the bot now asks
+  the admin via inline keyboard "هل تريد ربط الزر المنسوخ بالأصل؟".
+  Yes → `set_twin(source_bid, new_bid)` is called immediately.
+  No → clone proceeds without linking.
+  The existing hardcoded pairs (1966↔3101, 2017↔3106) remain linked as-is.
+  Handler in `bot/message_handlers.py` (wait_clone_id state) stores pending
+  data in `ctx.user_data["clone_link_pending"]`; resolved in
+  `bot/callback_handlers.py` via `clone_link_yes_` / `clone_link_no_`.

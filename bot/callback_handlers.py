@@ -2626,6 +2626,77 @@ async def cb_manage(update: Update, ctx):
         )
         return
 
+    # ── قرار ربط الزر المنسوخ بالأصل ────────────────────────────
+    if d.startswith("clone_link_yes_") or d.startswith("clone_link_no_"):
+        pending = ctx.user_data.pop("clone_link_pending", {})
+
+        if d.startswith("clone_link_yes_"):
+            parts = d[len("clone_link_yes_"):].split("_")
+            source_bid = int(parts[0]); new_bid = int(parts[1])
+            set_twin(source_bid, new_bid)
+            confirm_text = (
+                f"🔗 *تم الربط بنجاح!*\n\n"
+                f"الزر *#{new_bid}* مرتبط الآن بالزر الأصل *#{source_bid}*.\n"
+                "_أي تعديل في أحدهما سينعكس تلقائياً على الآخر._"
+            )
+        else:
+            new_bid = int(d[len("clone_link_no_"):])
+            source_bid = pending.get("source_bid", new_bid)
+            confirm_text = f"📋 *تم الاستنساخ بدون ربط.*"
+
+        cloned_label = pending.get("cloned_label", f"#{new_bid}")
+        cloned_type  = pending.get("cloned_type", "menu")
+        add_pid      = pending.get("add_pid")
+        if add_pid:
+            ctx.user_data["pid"] = add_pid
+
+        try:
+            await q.edit_message_text(confirm_text, parse_mode="Markdown")
+        except Exception:
+            pass
+
+        # عرض لوحة الإدارة للزر المنسوخ
+        cloned_b = get_btn(new_bid)
+        if cloned_b:
+            cloned_label = cloned_b.get("label", cloned_label)
+            cloned_type  = cloned_b.get("type", cloned_type)
+
+        if cloned_type == "content":
+            items = get_items(new_bid)
+            await set_panel(ctx, chat_id,
+                            f"{btn_id_header(new_bid)}📄 *{cloned_label}*\n_{len(items)} عنصر منسوخ_",
+                            kb_content_panel(new_bid))
+        elif cloned_type == "quiz":
+            qs = get_quiz_questions(new_bid)
+            await set_panel(ctx, chat_id,
+                            f"{btn_id_header(new_bid)}📊 *{cloned_label}*\n_{len(qs)} سؤال منسوخ_",
+                            kb_quiz_panel(new_bid))
+        elif cloned_type == "exam":
+            qs = get_exam_questions(new_bid)
+            await set_panel(ctx, chat_id,
+                            f"{btn_id_header(new_bid)}📝 *{cloned_label}*\n_{len(qs)} سؤال منسوخ_",
+                            kb_exam_panel(new_bid))
+        elif cloned_type == "compound":
+            ch = get_buttons(new_bid)
+            await set_panel(ctx, chat_id,
+                            f"{btn_id_header(new_bid)}🧩 *{cloned_label}*\n_{len(ch)} زر داخلي منسوخ_",
+                            kb_compound_quick(new_bid))
+        elif cloned_type == "exam_group":
+            ch = get_buttons(new_bid)
+            await set_panel(ctx, chat_id,
+                            f"{btn_id_header(new_bid)}🎓 *{cloned_label}*\n_{len(ch)} موضوع منسوخ_",
+                            kb_exam_group_quick(new_bid))
+        elif cloned_type == "special":
+            await set_panel(ctx, chat_id,
+                            f"{btn_id_header(new_bid)}⭐ *{cloned_label}*\n_زر مخصص — منسوخ_",
+                            kb_special_manage(new_bid))
+        else:
+            ch = get_buttons(new_bid)
+            await set_panel(ctx, chat_id,
+                            f"{btn_id_header(new_bid)}📂 *{cloned_label}*\n_{len(ch)} زر منسوخ_",
+                            kb_menu_quick(new_bid))
+        return
+
     if d == "pt_cancel":
         ctx.user_data.pop("state", None); ctx.user_data.pop("new_type", None)
         ctx.user_data.pop("add_after", None); ctx.user_data.pop("add_pid", None)

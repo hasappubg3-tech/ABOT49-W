@@ -588,12 +588,25 @@ async def on_message(update: Update, ctx):
         ctx.user_data.pop("add_after", None); ctx.user_data.pop("add_pid", None)
         ctx.user_data.pop("add_new_row", None); ctx.user_data.pop("add_before", None)
         ctx.user_data["pid"] = add_pid
+        # حفظ بيانات الاستنساخ ريثما يختار المشرف الربط أو لا
+        ctx.user_data["clone_link_pending"] = {
+            "source_bid": source_bid,
+            "new_bid": new_bid,
+            "add_pid": add_pid,
+            "cloned_label": cloned_label,
+            "cloned_type": cloned_type,
+        }
+        link_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔗 نعم، اربطهما", callback_data=f"clone_link_yes_{source_bid}_{new_bid}"),
+            InlineKeyboardButton("❌ لا، بدون ربط",  callback_data=f"clone_link_no_{new_bid}"),
+        ]])
         await m.reply_text(
-            f"✅ تم استنساخ *{cloned_label}*{status_note}",
+            f"✅ تم استنساخ *{cloned_label}*{status_note}\n\n"
+            f"🔗 *هل تريد ربط الزر المنسوخ* (#{new_bid}) *بالزر الأصل* (#{source_bid})؟\n"
+            "_أي تعديل في أحدهما سينعكس تلقائياً على الآخر، والتقييمات والتعليقات ستكون موحّدة بينهما._",
             parse_mode="Markdown",
-            reply_markup=build_kb(uid, add_pid)
+            reply_markup=link_kb
         )
-        await _show_cloned_panel(ctx, chat_id, new_bid, cloned_label, cloned_type)
         return
 
     # ── انتظار اسم الزر ───────────────────────────────────────────

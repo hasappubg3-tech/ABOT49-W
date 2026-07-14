@@ -340,7 +340,7 @@ async def on_message(update: Update, ctx):
         return
 
     # ── حفظ إيموجي متحرك تلقائياً (للمشرفين — في أي حالة، بصمت) ──
-    if is_admin(uid):
+    if is_admin(uid) and state != "wait_emoji_num":
         _all_ents = list(m.entities or []) + list(m.caption_entities or [])
         _custom = [e for e in _all_ents
                    if e.type == MessageEntity.CUSTOM_EMOJI and e.custom_emoji_id]
@@ -1370,6 +1370,42 @@ async def on_message(update: Update, ctx):
             "✅ تم حفظ رابط القناة.",
             kb_library_settings())
         await m.reply_text("✅ تم حفظ رابط القناة.", reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار إيموجي مخصص (الإضافة برقم تلقائي) ────────────────────
+    if state == "wait_emoji_num":
+        _all_ents = list(m.entities or []) + list(m.caption_entities or [])
+        _custom_e = [e for e in _all_ents
+                     if e.type == MessageEntity.CUSTOM_EMOJI and e.custom_emoji_id]
+        if not _custom_e:
+            await m.reply_text("⚠️ لم أجد إيموجياً مخصصاً. أرسل إيموجي متحرك مخصص.")
+            return
+        _e = _custom_e[0]
+        _eid = _e.custom_emoji_id
+        _src = m.text or m.caption or ""
+        try:
+            _src_u16 = _src.encode("utf-16-le")
+            _start = _e.offset * 2
+            _end   = (_e.offset + _e.length) * 2
+            _fb    = _src_u16[_start:_end].decode("utf-16-le") if _src else "⭐"
+        except Exception:
+            _fb = "⭐"
+        if not _fb:
+            _fb = "⭐"
+        from bot.data_access import get_next_emoji_num
+        _num = get_next_emoji_num()
+        save_emoji_alias(str(_num), _eid, _fb, uid)
+        try:
+            from bot.keyboards import invalidate_kb_emoji_cache
+            invalidate_kb_emoji_cache()
+        except Exception:
+            pass
+        ctx.user_data.pop("state", None)
+        await m.reply_text(
+            f"✅ تم حفظ الإيموجي برقم *#{_num}*\n\n"
+            f"يمكنك الإشارة إليه بـ `#{_num}` عند طلب أي تعديل لاحقاً.",
+            parse_mode="Markdown"
+        )
         return
 
     # ── انتظار اسم رمز الإيموجي المتحرك ─────────────────────────────

@@ -845,12 +845,15 @@ def kb_emoji_aliases():
     for a in aliases:
         alias = a['alias']
         fb    = a.get('fallback', '⭐')
-        rows.append([InlineKeyboardButton(
-            f"{fb} :{alias}:",
-            callback_data=f"st_emoji_view_{alias}"
-        )])
+        try:
+            num = int(alias)
+            label = f"{fb}  #{num}"
+        except (ValueError, TypeError):
+            label = f"{fb} :{alias}:"
+        rows.append([InlineKeyboardButton(label, callback_data=f"st_emoji_view_{alias}")])
     if not aliases:
-        rows.append([InlineKeyboardButton("لا توجد رموز مسجّلة بعد", callback_data="noop")])
+        rows.append([InlineKeyboardButton("لا توجد إيموجيات مسجّلة بعد", callback_data="noop")])
+    rows.append([InlineKeyboardButton("➕ إضافة إيموجي", callback_data="st_emoji_add")])
     rows.append([InlineKeyboardButton("رجوع", callback_data="st_back")])
     return InlineKeyboardMarkup(rows)
 

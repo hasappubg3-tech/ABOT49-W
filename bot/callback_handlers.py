@@ -1519,11 +1519,23 @@ async def cb_manage(update: Update, ctx):
         count = len(aliases)
         await q.edit_message_text(
             f"🎨 *رموز الإيموجي المتحركة* ({count})\n\n"
-            f"أرسل لي إيموجي متحركاً في أي وقت وسأطلب منك رمزه تلقائياً.\n"
-            f"ثم استخدم الرمز في أي نص محتوى بالشكل `:اسم:`\n\n"
-            f"مثال: `:نجمة:` يتحول إلى الإيموجي المتحرك عند عرضه للمستخدم.",
+            f"اضغط *إضافة إيموجي* لحفظ إيموجي مخصص وسيتم تخصيص رقم له تلقائياً.\n\n"
+            f"استخدم الرقم لاحقاً للإشارة إلى الإيموجي عند طلب التعديلات.",
             parse_mode="Markdown",
             reply_markup=kb_emoji_aliases()
+        )
+        return
+
+    if d == "st_emoji_add":
+        ctx.user_data["state"] = "wait_emoji_num"
+        await q.edit_message_text(
+            "📨 *إضافة إيموجي مخصص*\n\n"
+            "أرسل لي الإيموجي المتحرك المخصص الذي تريد حفظه.\n"
+            "سيتم تخصيص رقم له تلقائياً.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("إلغاء", callback_data="st_emoji")
+            ]])
         )
         return
 
@@ -1533,9 +1545,14 @@ async def cb_manage(update: Update, ctx):
         if not doc:
             await q.answer("⚠️ الرمز غير موجود.", show_alert=True); return
         fb = doc.get("fallback", "⭐")
+        try:
+            num = int(alias)
+            alias_display = f"#{num}"
+        except (ValueError, TypeError):
+            alias_display = f":{alias}:"
         await q.edit_message_text(
-            f"🎨 *تفاصيل الرمز*\n\n"
-            f"الرمز: `:{alias}:`\n"
+            f"🎨 *تفاصيل الإيموجي*\n\n"
+            f"الرقم: `{alias_display}`\n"
             f"الإيموجي: {fb}\n"
             f"الـ ID: `{doc.get('emoji_id', '')}`",
             parse_mode="Markdown",

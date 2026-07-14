@@ -1377,6 +1377,17 @@ def get_all_emoji_aliases() -> list:
 def delete_emoji_alias(alias: str):
     _col("emoji_aliases").delete_one({"alias": alias})
 
+def get_next_emoji_num() -> int:
+    """يُرجع الرقم التالي المتاح لتخصيصه لإيموجي جديد."""
+    aliases = get_all_emoji_aliases()
+    nums = []
+    for a in aliases:
+        try:
+            nums.append(int(a["alias"]))
+        except (ValueError, TypeError):
+            pass
+    return max(nums, default=0) + 1
+
 # ── إحصائيات المستخدمين ──────────────────────────────────────────
 def update_user_info(uid, username=None, first_name=None):
     upd = {}

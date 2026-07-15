@@ -2457,7 +2457,14 @@ async def on_message(update: Update, ctx):
         matched = get_btn(marker_bid)
         if matched and matched.get("label") not in (text, _clean):
             # حماية إضافية: لو تم تعديل اسم الزر بعد بناء الكيبورد، نتجاهل البصمة
-            matched = None
+            # استثناء: الأزرار ذات label_emojis تُعرض بدون رمز الإيموجي → نقارن النص المجرّد
+            _le = matched.get("label_emojis") or {}
+            _stripped_lbl = matched.get("label", "")
+            for _ch in _le:
+                _stripped_lbl = _stripped_lbl.replace(_ch, "")
+            _stripped_lbl = _stripped_lbl.strip()
+            if _stripped_lbl not in (text, _clean):
+                matched = None
         if matched:
             ctx.user_data["pid"] = matched.get("parent_id")
 

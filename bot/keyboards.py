@@ -35,6 +35,13 @@ def _kb_emoji_id(label: str):
             return eid
     return None
 
+def _strip_known_emojis(label: str) -> str:
+    """يحذف رموز الإيموجي المحفوظة (الـ fallback) من نص الزر ويُنظّف المسافات الزائدة."""
+    result = label
+    for char in _emoji_cache:
+        result = result.replace(char, "")
+    return result.strip()
+
 # ── ترتيب تلقائي حسب السنة والنوع للأزرار المدمجة ──────────────────
 _YEAR_RE = _re.compile(r'20\d{2}')
 
@@ -155,7 +162,10 @@ def build_kb(uid, pid=None):
                 label = f"🟢{label}🟢"
             else:
                 label = f"🟡{label}🟡"
-        current_row.append(KeyboardButton(label + _encode_bid(b['id'])))
+        _eid = _kb_emoji_id(b['label'])
+        _btn_kw = {"api_kwargs": {"icon_custom_emoji_id": _eid}} if _eid else {}
+        _display_label = _strip_known_emojis(label) if _eid else label
+        current_row.append(KeyboardButton(_display_label + _encode_bid(b['id']), **_btn_kw))
         last_bid_in_row = b['id']
     if current_row:
         if admin and last_bid_in_row is not None:

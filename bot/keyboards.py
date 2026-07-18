@@ -264,7 +264,9 @@ def build_kb(uid, pid=None):
             except Exception:
                 quiz_results_map = {}
     for i, b in enumerate(btns):
-        if i > 0 and b.get('new_row', 1):
+        # في قوائم الملازم: أقصى زرين جنب بعض لمنع ازدحام أسماء المدرسين
+        _force_new_row = _show_mlz_filter_btn and len(current_row) >= 2
+        if i > 0 and (b.get('new_row', 1) or _force_new_row):
             if current_row:
                 if admin and last_bid_in_row is not None:
                     current_row.append(KeyboardButton(_plus_label(last_bid_in_row)))

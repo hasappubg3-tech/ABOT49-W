@@ -896,20 +896,33 @@ def btn_rating_text(bid: int, uid: int | None = None) -> str:
             user_line = f"\n✅ تقييمك: {user_rating}/5"
     return f"{rating_line}\n{count_line}{user_line}"
 
-_LIBRARY_KEYWORDS = ["ملزمة", "مراجعة", "وزاريات", "واجبات", "نسخة"]
-
 def get_library_btn_label() -> str:
     return get_setting("library_btn_label", "⚜️شراء من مكتبة الامير⚜️")
 
 def get_library_channel_url() -> str:
     return get_setting("library_channel_url", "")
 
-def _btn_has_library_keyword(bid: int) -> bool:
+def _btn_is_in_mlazm(bid: int) -> bool:
+    """هل زر المحتوى يقع ضمن هيكل قوائم الملازم؟
+    هيكل الشجرة: الملازم ← مادة ← مدرس(compound) ← ملف(content=bid)
+    نصعد أربع مستويات ونتحقق أن أحد الأجداد يحتوي 'ملازم' في اسمه."""
     b = get_btn(bid)
     if not b:
         return False
-    label = b.get("label", "")
-    return any(kw in label for kw in _LIBRARY_KEYWORDS)
+    # المستوى الأول: الزر الحالي (content) → نصعد للوالد (compound/مدرس)
+    p1 = get_btn(b.get("parent_id"))
+    if not p1:
+        return False
+    # المستوى الثاني: المدرس → نصعد للمادة (كيمياء/فيزياء...)
+    p2 = get_btn(p1.get("parent_id"))
+    if not p2:
+        return False
+    # المستوى الثالث: المادة → نصعد للوالد الذي يجب أن يكون الملازم
+    p3 = get_btn(p2.get("parent_id"))
+    if not p3:
+        return False
+    label_clean = p3.get("label", "").replace("\u0640", "")
+    return "ملازم" in label_clean
 
 def kb_btn_rating(bid: int):
     rows = [[
@@ -917,7 +930,7 @@ def kb_btn_rating(bid: int):
         InlineKeyboardButton("💬 التعليقات", callback_data=f"cmts_btn_{bid}"),
     ]]
     lib_url = get_library_channel_url()
-    if lib_url and _btn_has_library_keyword(bid):
+    if lib_url and _btn_is_in_mlazm(bid):
         rows.append([InlineKeyboardButton(get_library_btn_label(), url=lib_url)])
     return InlineKeyboardMarkup(rows)
 

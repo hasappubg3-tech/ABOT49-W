@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}شبكة الامير التعليمية — المكتبة{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-inner">
+    <h1 class="hero-title">مكتبة الامير التعليمية</h1>
+    <p class="hero-sub">ملازم وكتب دراسية مجانية لجميع الصفوف</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    {% if categories %}
+      <h2 class="section-title">الصفوف الدراسية</h2>
+      <div class="cat-grid">
+        {% for cat in categories %}
+        <a href="/cat/{{ cat.id }}" class="cat-card">
+          <span class="cat-icon">📚</span>
+          <span class="cat-label">{{ cat.label }}</span>
+          <span class="cat-arrow">←</span>
+        </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <span class="empty-icon">📭</span>
+        <p>لا يوجد محتوى متاح حالياً</p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

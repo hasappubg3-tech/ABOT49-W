@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="شبكة الامير التعليمية — مكتبة الملازم والكتب الدراسية">
+  <title>{% block title %}شبكة الامير التعليمية{% endblock %}</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<!-- ══ شريط التنقل ═══════════════════════════════════════════════ -->
+<header class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-brand">
+      <img src="/static/img/logo.svg" alt="شبكة الامير" class="nav-logo" id="site-logo">
+      <span class="nav-title">شبكة&nbsp;الامير<br><small>التعليمية</small></span>
+    </a>
+
+    <div class="nav-actions">
+      <button class="icon-btn" id="search-toggle" title="بحث" aria-label="فتح البحث">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="theme-toggle" title="تبديل الوضع" aria-label="تبديل الوضع الداكن">
+        <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="moon-icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+      <a href="https://t.me/{{ bot_username }}" target="_blank" class="bot-btn">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+          <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.01 9.469c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.48 13.99l-2.95-.924c-.642-.202-.655-.642.135-.953l11.52-4.44c.535-.194 1.002.13.377.575z"/>
+        </svg>
+        البوت
+      </a>
+    </div>
+  </div>
+
+  <!-- شريط البحث المنسدل -->
+  <div class="search-bar" id="search-bar">
+    <div class="search-inner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" id="search-input" placeholder="ابحث عن ملزمة أو كتاب…" autocomplete="off" dir="rtl">
+      <button class="clear-btn hidden" id="clear-search">✕</button>
+    </div>
+    <div class="search-results" id="search-results"></div>
+  </div>
+</header>
+
+<!-- ══ المحتوى الرئيسي ════════════════════════════════════════════ -->
+<main class="main-content">
+  {% block breadcrumb %}{% endblock %}
+  {% block content %}{% endblock %}
+</main>
+
+<!-- ══ التذييل ═══════════════════════════════════════════════════ -->
+<footer class="footer">
+  <div class="footer-inner">
+    <p class="footer-brand">شبكة الامير التعليمية</p>
+    <p class="footer-sub">جميع الملازم والكتب متاحة مجاناً عبر البوت</p>
+    <a href="https://t.me/{{ bot_username }}" target="_blank" class="footer-bot-link">
+      افتح البوت على تيليغرام ←
+    </a>
+  </div>
+</footer>
+
+<script src="/static/js/main.js"></script>
+</body>
+</html>

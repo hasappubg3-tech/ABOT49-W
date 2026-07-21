@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}نتائج البحث: {{ query }} — شبكة الامير التعليمية{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1 class="page-title">
+      {% if query %}نتائج البحث عن: <span class="gold">{{ query }}</span>
+      {% else %}البحث{% endif %}
+    </h1>
+    {% if results %}
+    <span class="result-count">{{ results|length }} نتيجة</span>
+    {% endif %}
+  </div>
+
+  {% if results %}
+  <div class="notes-list">
+    {% for note in results %}
+    <a href="/note/{{ note.id }}" class="note-card">
+      <div class="note-thumb">
+        {% if note.thumb_url %}
+          <img src="{{ note.thumb_url }}" alt="{{ note.label }}" loading="lazy">
+        {% else %}
+          <div class="note-thumb-placeholder">
+            <span>{{ note.label[0] if note.label else '📄' }}</span>
+          </div>
+        {% endif %}
+      </div>
+      <div class="note-info">
+        <div class="note-top">
+          <h3 class="note-title">{{ note.label }}</h3>
+          {% if note.is_new %}<span class="badge badge--new">جديد</span>{% endif %}
+        </div>
+        <div class="note-meta">
+          {% if note.rating.count > 0 %}
+          <span class="meta-item">
+            {% for i in range(5) %}{% if i < note.rating.avg|int %}⭐{% else %}☆{% endif %}{% endfor %}
+            {{ note.rating.avg }}
+          </span>
+          {% endif %}
+          {% if note.click_count > 0 %}
+          <span class="meta-item">📥 {{ note.click_count }}</span>
+          {% endif %}
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% elif query %}
+  <div class="empty-state">
+    <span class="empty-icon">🔍</span>
+    <p>لا توجد نتائج لـ "<strong>{{ query }}</strong>"</p>
+    <a href="/" class="bot-cta">العودة للرئيسية</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

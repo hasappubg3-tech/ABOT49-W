@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}{{ btn.label }} — شبكة الامير التعليمية{% endblock %}
+
+{% block breadcrumb %}
+{% if breadcrumb|length > 1 %}
+<nav class="breadcrumb" aria-label="مسار التنقل">
+  <div class="container">
+    <a href="/" class="bc-item">الرئيسية</a>
+    {% for crumb in breadcrumb %}
+      {% if not loop.last %}
+        <span class="bc-sep">←</span>
+        <a href="/cat/{{ crumb.id }}" class="bc-item">{{ crumb.label }}</a>
+      {% else %}
+        <span class="bc-sep">←</span>
+        <span class="bc-item bc-current">{{ crumb.label }}</span>
+      {% endif %}
+    {% endfor %}
+  </div>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1 class="page-title">{{ btn.label }}</h1>
+  </div>
+
+  <!-- ── أقسام فرعية ─────────────────────────────────────────── -->
+  {% if menus %}
+  <div class="cat-grid mb-4">
+    {% for sub in menus %}
+    <a href="/cat/{{ sub.id }}" class="cat-card cat-card--sm">
+      <span class="cat-icon">📂</span>
+      <span class="cat-label">{{ sub.label }}</span>
+      <span class="cat-arrow">←</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ── الملازم والكتب ──────────────────────────────────────── -->
+  {% if contents %}
+  <div class="notes-list">
+    {% for note in contents %}
+    <a href="/note/{{ note.id }}" class="note-card">
+      <!-- Thumbnail -->
+      <div class="note-thumb">
+        {% if note.thumb_url %}
+          <img src="{{ note.thumb_url }}" alt="{{ note.label }}" loading="lazy">
+        {% else %}
+          <div class="note-thumb-placeholder">
+            <span>{{ note.label[0] if note.label else '📄' }}</span>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- معلومات -->
+      <div class="note-info">
+        <div class="note-top">
+          <h3 class="note-title">{{ note.label }}</h3>
+          {% if note.is_new %}
+          <span class="badge badge--new">جديد</span>
+          {% endif %}
+        </div>
+
+        <div class="note-meta">
+          {% if note.rating.count > 0 %}
+          <span class="meta-item">
+            <span class="meta-stars">
+              {% for i in range(5) %}
+                {% if i < note.rating.avg|int %}⭐{% else %}☆{% endif %}
+              {% endfor %}
+            </span>
+            <span class="meta-val">{{ note.rating.avg }}</span>
+            <span class="meta-dim">({{ note.rating.count }})</span>
+          </span>
+          {% endif %}
+
+          {% if note.click_count > 0 %}
+          <span class="meta-item">
+            <span class="meta-icon">📥</span>
+            <span class="meta-val">{{ note.click_count }}</span>
+          </span>
+          {% endif %}
+        </div>
+
+        <div class="note-actions">
+          <span class="open-btn">فتح في البوت</span>
+          <button class="share-btn-sm" onclick="shareNote(event, '{{ note.id }}', '{{ note.label|replace("'", "\\'") }}')" title="مشاركة">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% elif not menus %}
+  <div class="empty-state">
+    <span class="empty-icon">📭</span>
+    <p>لا يوجد محتوى في هذا القسم بعد</p>
+    <a href="https://t.me/{{ bot_username }}" target="_blank" class="bot-cta">افتح البوت</a>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

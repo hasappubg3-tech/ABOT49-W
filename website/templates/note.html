@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}{{ btn.label }} — شبكة الامير التعليمية{% endblock %}
+
+{% block breadcrumb %}
+{% if breadcrumb %}
+<nav class="breadcrumb" aria-label="مسار التنقل">
+  <div class="container">
+    <a href="/" class="bc-item">الرئيسية</a>
+    {% for crumb in breadcrumb %}
+      {% if not loop.last %}
+        <span class="bc-sep">←</span>
+        <a href="/cat/{{ crumb.id }}" class="bc-item">{{ crumb.label }}</a>
+      {% else %}
+        <span class="bc-sep">←</span>
+        <span class="bc-item bc-current">{{ crumb.label }}</span>
+      {% endif %}
+    {% endfor %}
+  </div>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="note-detail">
+
+    <!-- غلاف الملزمة -->
+    <div class="note-cover">
+      {% if thumb %}
+        <img src="{{ thumb }}" alt="{{ btn.label }}" class="cover-img">
+      {% else %}
+        <div class="cover-placeholder">
+          <span class="cover-letter">{{ btn.label[0] if btn.label else '📄' }}</span>
+          <span class="cover-label">{{ btn.label }}</span>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- معلومات الملزمة -->
+    <div class="note-detail-info">
+      <h1 class="detail-title">{{ btn.label }}</h1>
+
+      <!-- تقييم -->
+      {% if rating.count > 0 %}
+      <div class="detail-rating">
+        <div class="rating-stars">
+          {% for i in range(5) %}
+            <span class="star {% if i < rating.avg|int %}star--full{% elif (rating.avg - rating.avg|int) >= 0.5 and i == rating.avg|int %}star--half{% else %}star--empty{% endif %}">★</span>
+          {% endfor %}
+        </div>
+        <span class="rating-score">{{ rating.avg }}/5</span>
+        <span class="rating-count">({{ rating.count }} تقييم)</span>
+      </div>
+      {% else %}
+      <p class="no-rating">لا يوجد تقييم بعد</p>
+      {% endif %}
+
+      <!-- إحصاء -->
+      <div class="detail-stats">
+        {% if btn.click_count %}
+        <div class="stat-item">
+          <span class="stat-icon">📥</span>
+          <span class="stat-val">{{ btn.click_count }}</span>
+          <span class="stat-label">تحميل</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- معاينة النص -->
+      {% if preview_text %}
+      <div class="note-preview">
+        <h3 class="preview-title">وصف المحتوى</h3>
+        <p class="preview-text">{{ preview_text[:400] }}{% if preview_text|length > 400 %}…{% endif %}</p>
+      </div>
+      {% endif %}
+
+      <!-- أزرار الإجراءات -->
+      <div class="detail-actions">
+        <a href="https://t.me/{{ bot_username }}" target="_blank" class="btn btn--primary btn--lg">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.01 9.469c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.48 13.99l-2.95-.924c-.642-.202-.655-.642.135-.953l11.52-4.44c.535-.194 1.002.13.377.575z"/>
+          </svg>
+          تحميل من البوت
+        </a>
+        <button class="btn btn--outline" onclick="shareThis('{{ btn.id }}', '{{ btn.label|replace("'", "\\'") }}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+          مشاركة
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- صور المحتوى للمعاينة -->
+  {% if photos %}
+  <div class="preview-section">
+    <h2 class="section-title">معاينة الملزمة</h2>
+    <div class="preview-gallery">
+      {% for p in photos[:6] %}
+      <div class="gallery-item">
+        <img src="/thumb/{{ btn.id }}" alt="معاينة {{ btn.label }}" loading="lazy">
+      </div>
+      {% endfor %}
+      {% if photos|length > 6 %}
+      <div class="gallery-more">
+        <p>+{{ photos|length - 6 }} صورة أخرى</p>
+        <a href="https://t.me/{{ bot_username }}" target="_blank">عرض الكل في البوت</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- Toast للمشاركة -->
+<div class="toast" id="share-toast">تم نسخ الرابط ✓</div>
+
+<script>
+function shareThis(id, label) {
+  const url = window.location.href;
+  if (navigator.share) {
+    navigator.share({ title: label, url });
+  } else {
+    navigator.clipboard.writeText(url).then(() => showToast());
+  }
+}
+function showToast() {
+  const t = document.getElementById('share-toast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+{% endblock %}

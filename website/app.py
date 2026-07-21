@@ -1,20 +1,21 @@
 """
 الموقع الإلكتروني لشبكة الامير التعليمية
-Flask app — يعمل في thread منفصل بجانب البوت
+Flask app — يعمل في process منفصل بجانب البوت
 """
 import os
 import time
 import logging
 import requests as _req
-from flask import Flask, render_template, jsonify, request, redirect, abort, url_for
+from flask import Flask, render_template, jsonify, request, redirect, abort, url_for, Response
 
 BOT_TOKEN    = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-BOT_USERNAME = "Mdry7bot"
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "Mdry7bot")
+SITE_NAME    = "شبكة الامير التعليمية"
 NEW_DAYS     = 14   # عدد الأيام لاعتبار الملزمة "جديدة"
 
-# ── Cache بسيط للـ thumbnails (bid -> (url|None, timestamp)) ──────
-_thumb_cache: dict = {}
-_THUMB_TTL = 3600  # ثانية (ساعة واحدة)
+# ── Cache بسيط (file_id / bid -> (url|None, timestamp)) ──────────
+_file_url_cache: dict = {}
+_FILE_URL_TTL = 3600  # ساعة واحدة
 
 
 def _get_mongo():
@@ -24,6 +25,40 @@ def _get_mongo():
 
 def _col(name: str):
     return _get_mongo()[name]
+
+
+# ─────────────────────────────────────────────────────────────────────
+# مساعدات Telegram API
+# ─────────────────────────────────────────────────────────────────────
+
+def _file_url(file_id: str) -> str | None:
+    """يجلب رابط ملف من Telegram API ويخزنه مؤقتاً."""
+    if not file_id or not BOT_TOKEN:
+        return None
+    now = time.time()
+    cached = _file_url_cache.get(file_id)
+    if cached:
+        url, ts = cached
+        if now - ts < _FILE_URL_TTL:
+            return url
+
+    try:
+        resp = _req.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/getFile",
+            params={"file_id": file_id},
+            timeout=6,
+        )
+        data = resp.json()
+        if data.get("ok"):
+            fp = data["result"]["file_path"]
+            url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}"
+            _file_url_cache[file_id] = (url, now)
+            return url
+    except Exception as e:
+        logging.debug(f"[file_url] error={e}")
+
+    _file_url_cache[file_id] = (None, now)
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -48,7 +83,6 @@ def _items(bid: int):
 
 
 def _rating(bid: int) -> dict:
-    """إجمالي التقييم للزر."""
     pipeline = [
         {"$match": {"button_id": bid}},
         {"$group": {"_id": None, "cnt": {"$sum": 1}, "avg": {"$avg": "$rating"}}}
@@ -58,7 +92,6 @@ def _rating(bid: int) -> dict:
         return {"count": 0, "avg": 0.0, "stars": ""}
     r = result[0]
     avg = float(r.get("avg") or 0)
-    # نجوم نصية
     full  = int(avg)
     half  = 1 if (avg - full) >= 0.5 else 0
     empty = 5 - full - half
@@ -67,7 +100,6 @@ def _rating(bid: int) -> dict:
 
 
 def _breadcrumb(bid: int) -> list:
-    """مسار الزر من الجذر."""
     path = []
     current = bid
     while current is not None:
@@ -88,61 +120,44 @@ def _is_new(btn: dict) -> bool:
 
 
 def _thumb_url(bid: int) -> str | None:
-    """يجلب رابط الصورة الأولى لهذا الزر من Telegram API ويخزنه مؤقتاً."""
-    now = time.time()
-    if bid in _thumb_cache:
-        url, ts = _thumb_cache[bid]
-        if now - ts < _THUMB_TTL:
-            return url
-
-    # أول عنصر من نوع photo
+    """يجلب رابط الصورة الأولى لهذا الزر."""
     item = _col("content_items").find_one(
         {"button_id": bid, "type": "photo"},
         sort=[("ord", 1), ("id", 1)]
     )
     if not item or not item.get("file_id"):
-        _thumb_cache[bid] = (None, now)
         return None
-
-    try:
-        resp = _req.get(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/getFile",
-            params={"file_id": item["file_id"]},
-            timeout=6
-        )
-        data = resp.json()
-        if data.get("ok"):
-            fp = data["result"]["file_path"]
-            url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}"
-            _thumb_cache[bid] = (url, now)
-            return url
-    except Exception as e:
-        logging.debug(f"[thumb] bid={bid} error={e}")
-
-    _thumb_cache[bid] = (None, now)
-    return None
+    return _file_url(item["file_id"])
 
 
 def _enrich(btn: dict) -> dict:
-    """يضيف التقييم والـ thumbnail وشارة الجديد للزر."""
     bid = btn["id"]
     return {
         **btn,
-        "rating":   _rating(bid),
-        "is_new":   _is_new(btn),
-        "thumb_url": _thumb_url(bid),
+        "rating":      _rating(bid),
+        "is_new":      _is_new(btn),
+        "thumb_url":   _thumb_url(bid),
         "click_count": btn.get("click_count", 0),
     }
 
 
 def _search_content(q: str, limit: int = 50) -> list:
-    """بحث نصي في أسماء الملازم (نوع content)."""
     docs = list(_col("buttons").find({
         "type": "content",
         "deleted": {"$ne": 1},
-        "hidden": {"$ne": 1},
-        "label": {"$regex": q, "$options": "i"}
+        "hidden":  {"$ne": 1},
+        "label":   {"$regex": q, "$options": "i"}
     }).limit(limit))
+    return [_enrich(d) for d in docs]
+
+
+def _latest_notes(limit: int = 8) -> list:
+    """أحدث الملازم المضافة."""
+    docs = list(_col("buttons").find({
+        "type":    "content",
+        "deleted": {"$ne": 1},
+        "hidden":  {"$ne": 1},
+    }).sort("created_at", -1).limit(limit))
     return [_enrich(d) for d in docs]
 
 
@@ -158,9 +173,16 @@ def create_app() -> Flask:
     @app.route("/")
     def index():
         categories = _children(None)
+        latest     = _latest_notes(8)
         return render_template("index.html",
             categories=categories,
-            bot_username=BOT_USERNAME
+            latest=latest,
+            bot_username=BOT_USERNAME,
+            site_name=SITE_NAME,
+            og_title=SITE_NAME,
+            og_description="مكتبة ملازم وكتب دراسية مجانية لجميع الصفوف",
+            og_url="/",
+            og_image="",
         )
 
     # ── صفحة فئة / قسم ───────────────────────────────────────────────
@@ -169,16 +191,21 @@ def create_app() -> Flask:
         btn = _btn(bid)
         if not btn:
             abort(404)
-        children  = _children(bid)
-        menus     = [c for c in children if c.get("type") != "content"]
-        contents  = [_enrich(c) for c in children if c.get("type") == "content"]
+        children   = _children(bid)
+        menus      = [c for c in children if c.get("type") != "content"]
+        contents   = [_enrich(c) for c in children if c.get("type") == "content"]
         breadcrumb = _breadcrumb(bid)
         return render_template("category.html",
             btn=btn,
             menus=menus,
             contents=contents,
             breadcrumb=breadcrumb,
-            bot_username=BOT_USERNAME
+            bot_username=BOT_USERNAME,
+            site_name=SITE_NAME,
+            og_title=f"{btn.get('label','')} — {SITE_NAME}",
+            og_description=f"تصفح ملازم وكتب {btn.get('label','')}",
+            og_url=f"/cat/{bid}",
+            og_image="",
         )
 
     # ── صفحة الملزمة ─────────────────────────────────────────────────
@@ -191,13 +218,25 @@ def create_app() -> Flask:
         rating     = _rating(bid)
         breadcrumb = _breadcrumb(bid)
         thumb      = _thumb_url(bid)
+
         # نص المقدمة: أول عنصر نصي
         preview_text = next(
             (it.get("content", "") for it in items if it.get("type") == "text" and it.get("content")),
             ""
         )
-        # كل الصور للمعاينة
-        photos = [it for it in items if it.get("type") == "photo" and it.get("file_id")]
+        # كل الصور — بـ file_id مستقل لكل صورة (إصلاح الغاليري)
+        photos = [
+            {"file_id": it.get("file_id")}
+            for it in items
+            if it.get("type") == "photo" and it.get("file_id")
+        ]
+        # ملفات PDF
+        pdf_items = [it for it in items if it.get("type") == "document" and it.get("file_id")]
+        pdf_url   = _file_url(pdf_items[0]["file_id"]) if pdf_items else None
+
+        # رابط deep-link للبوت لفتح الملزمة مباشرة
+        bot_deep_link = f"https://t.me/{BOT_USERNAME}?start=btn_{bid}"
+
         return render_template("note.html",
             btn=btn,
             items=items,
@@ -206,7 +245,14 @@ def create_app() -> Flask:
             thumb=thumb,
             preview_text=preview_text,
             photos=photos,
-            bot_username=BOT_USERNAME
+            pdf_url=pdf_url,
+            bot_deep_link=bot_deep_link,
+            bot_username=BOT_USERNAME,
+            site_name=SITE_NAME,
+            og_title=f"{btn.get('label','')} — {SITE_NAME}",
+            og_description=preview_text[:160] if preview_text else f"ملزمة {btn.get('label','')}",
+            og_url=f"/note/{bid}",
+            og_image=thumb or "",
         )
 
     # ── صفحة البحث ───────────────────────────────────────────────────
@@ -217,7 +263,12 @@ def create_app() -> Flask:
         return render_template("search.html",
             query=q,
             results=results,
-            bot_username=BOT_USERNAME
+            bot_username=BOT_USERNAME,
+            site_name=SITE_NAME,
+            og_title=f"نتائج البحث: {q} — {SITE_NAME}" if q else f"بحث — {SITE_NAME}",
+            og_description=f"نتائج البحث عن '{q}'" if q else "ابحث في مكتبة الامير",
+            og_url=f"/search?q={q}",
+            og_image="",
         )
 
     # ── API بحث (JSON لـ live search) ────────────────────────────────
@@ -227,17 +278,17 @@ def create_app() -> Flask:
         if not q:
             return jsonify([])
         docs = list(_col("buttons").find({
-            "type": "content",
+            "type":    "content",
             "deleted": {"$ne": 1},
-            "hidden": {"$ne": 1},
-            "label": {"$regex": q, "$options": "i"}
+            "hidden":  {"$ne": 1},
+            "label":   {"$regex": q, "$options": "i"}
         }).limit(15))
         return jsonify([
             {"id": d["id"], "label": d.get("label", ""), "url": f"/note/{d['id']}"}
             for d in docs
         ])
 
-    # ── Thumbnail proxy ───────────────────────────────────────────────
+    # ── Thumbnail بـ bid (للتوافق مع الكود القديم) ────────────────────
     @app.route("/thumb/<int:bid>")
     def thumb(bid: int):
         url = _thumb_url(bid)
@@ -245,9 +296,43 @@ def create_app() -> Flask:
             return redirect(url)
         return redirect(url_for("static", filename="img/no-thumb.svg"))
 
+    # ── File proxy بـ file_id (للغاليري والـ PDF) ────────────────────
+    @app.route("/file/<path:file_id>")
+    def file_proxy(file_id: str):
+        url = _file_url(file_id)
+        if not url:
+            abort(404)
+        # للـ PDF: نعيد البيانات مباشرة حتى يعمل الـ iframe في المتصفح
+        try:
+            r = _req.get(url, timeout=30, stream=True)
+            content_type = r.headers.get("Content-Type", "application/octet-stream")
+            is_pdf = "pdf" in content_type or file_id.lower().endswith(".pdf")
+            if is_pdf:
+                def generate():
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            yield chunk
+                resp_headers = {
+                    "Content-Type": content_type,
+                    "Content-Disposition": "inline",
+                }
+                if "Content-Length" in r.headers:
+                    resp_headers["Content-Length"] = r.headers["Content-Length"]
+                return Response(generate(), status=200, headers=resp_headers)
+        except Exception as e:
+            logging.debug(f"[file_proxy] fallback redirect: {e}")
+        return redirect(url)
+
     # ── صفحة 404 ─────────────────────────────────────────────────────
     @app.errorhandler(404)
     def not_found(e):
-        return render_template("404.html", bot_username=BOT_USERNAME), 404
+        return render_template("404.html",
+            bot_username=BOT_USERNAME,
+            site_name=SITE_NAME,
+            og_title=f"404 — {SITE_NAME}",
+            og_description="الصفحة غير موجودة",
+            og_url="/",
+            og_image="",
+        ), 404
 
     return app

@@ -3,8 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="شبكة الامير التعليمية — مكتبة الملازم والكتب الدراسية">
-  <title>{% block title %}شبكة الامير التعليمية{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}{{ og_description | default('شبكة الامير التعليمية — مكتبة الملازم والكتب الدراسية') }}{% endblock %}">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type"        content="website">
+  <meta property="og:site_name"   content="{{ site_name | default('شبكة الامير التعليمية') }}">
+  <meta property="og:title"       content="{{ og_title | default('شبكة الامير التعليمية') }}">
+  <meta property="og:description" content="{{ og_description | default('مكتبة ملازم وكتب دراسية مجانية') }}">
+  {% if og_image %}<meta property="og:image" content="{{ og_image }}">{% endif %}
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card"        content="summary_large_image">
+  <meta name="twitter:title"       content="{{ og_title | default('شبكة الامير التعليمية') }}">
+  <meta name="twitter:description" content="{{ og_description | default('مكتبة ملازم وكتب دراسية مجانية') }}">
+  {% if og_image %}<meta name="twitter:image" content="{{ og_image }}">{% endif %}
+
+  <title>{% block title %}{{ og_title | default('شبكة الامير التعليمية') }}{% endblock %}</title>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">

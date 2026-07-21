@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}نتائج البحث: {{ query }} — شبكة الامير التعليمية{% endblock %}
+{% block title %}{% if query %}نتائج البحث: {{ query }}{% else %}بحث{% endif %} — {{ site_name }}{% endblock %}
 
 {% block content %}
 <div class="container">
@@ -35,13 +35,17 @@
         <div class="note-meta">
           {% if note.rating.count > 0 %}
           <span class="meta-item">
-            {% for i in range(5) %}{% if i < note.rating.avg|int %}⭐{% else %}☆{% endif %}{% endfor %}
-            {{ note.rating.avg }}
+            <span class="meta-stars">{% for i in range(5) %}{% if i < note.rating.avg|int %}⭐{% else %}☆{% endif %}{% endfor %}</span>
+            <span class="meta-val">{{ note.rating.avg }}</span>
+            <span class="meta-dim">({{ note.rating.count }})</span>
           </span>
           {% endif %}
           {% if note.click_count > 0 %}
-          <span class="meta-item">📥 {{ note.click_count }}</span>
+          <span class="meta-item">📥 <span class="meta-val">{{ note.click_count }}</span></span>
           {% endif %}
+        </div>
+        <div class="note-actions">
+          <span class="open-btn">عرض الملزمة</span>
         </div>
       </div>
     </a>

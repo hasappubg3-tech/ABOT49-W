@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ btn.label }} — شبكة الامير التعليمية{% endblock %}
+{% block title %}{{ btn.label }} — {{ site_name }}{% endblock %}
 
 {% block breadcrumb %}
 {% if breadcrumb %}
@@ -65,6 +65,20 @@
           <span class="stat-label">تحميل</span>
         </div>
         {% endif %}
+        {% if photos %}
+        <div class="stat-item">
+          <span class="stat-icon">🖼️</span>
+          <span class="stat-val">{{ photos|length }}</span>
+          <span class="stat-label">صورة</span>
+        </div>
+        {% endif %}
+        {% if pdf_url %}
+        <div class="stat-item">
+          <span class="stat-icon">📄</span>
+          <span class="stat-val">PDF</span>
+          <span class="stat-label">متاح</span>
+        </div>
+        {% endif %}
       </div>
 
       <!-- معاينة النص -->
@@ -77,7 +91,7 @@
 
       <!-- أزرار الإجراءات -->
       <div class="detail-actions">
-        <a href="https://t.me/{{ bot_username }}" target="_blank" class="btn btn--primary btn--lg">
+        <a href="{{ bot_deep_link }}" target="_blank" class="btn btn--primary btn--lg">
           <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
             <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.01 9.469c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.48 13.99l-2.95-.924c-.642-.202-.655-.642.135-.953l11.52-4.44c.535-.194 1.002.13.377.575z"/>
           </svg>
@@ -96,20 +110,39 @@
     </div>
   </div>
 
-  <!-- صور المحتوى للمعاينة -->
+  <!-- ══ معاينة PDF ═══════════════════════════════════════════════ -->
+  {% if pdf_url %}
+  <div class="pdf-section">
+    <h2 class="section-title">معاينة الملف</h2>
+    <div class="pdf-wrapper">
+      <object data="{{ pdf_url }}" type="application/pdf" class="pdf-embed">
+        <div class="pdf-fallback">
+          <span class="pdf-icon">📄</span>
+          <p>متصفحك لا يدعم عرض PDF مدمجاً</p>
+          <a href="{{ pdf_url }}" target="_blank" class="btn btn--primary">
+            فتح الملف ↗
+          </a>
+        </div>
+      </object>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ══ معرض صور الملزمة ══════════════════════════════════════════ -->
   {% if photos %}
   <div class="preview-section">
     <h2 class="section-title">معاينة الملزمة</h2>
     <div class="preview-gallery">
-      {% for p in photos[:6] %}
-      <div class="gallery-item">
-        <img src="/thumb/{{ btn.id }}" alt="معاينة {{ btn.label }}" loading="lazy">
+      {% for p in photos[:9] %}
+      <div class="gallery-item" onclick="openLightbox('{{ p.file_id }}', {{ loop.index0 }})">
+        <img src="/file/{{ p.file_id }}" alt="صفحة {{ loop.index }} — {{ btn.label }}" loading="lazy">
+        <div class="gallery-overlay"><span>🔍</span></div>
       </div>
       {% endfor %}
-      {% if photos|length > 6 %}
+      {% if photos|length > 9 %}
       <div class="gallery-more">
-        <p>+{{ photos|length - 6 }} صورة أخرى</p>
-        <a href="https://t.me/{{ bot_username }}" target="_blank">عرض الكل في البوت</a>
+        <p>+{{ photos|length - 9 }} صورة أخرى</p>
+        <a href="{{ bot_deep_link }}" target="_blank">عرض الكل في البوت</a>
       </div>
       {% endif %}
     </div>
@@ -118,10 +151,20 @@
 
 </div>
 
+<!-- ══ Lightbox ═══════════════════════════════════════════════════ -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <button class="lb-prev" onclick="event.stopPropagation(); lbNav(-1)">‹</button>
+  <button class="lb-next" onclick="event.stopPropagation(); lbNav(1)">›</button>
+  <img id="lb-img" src="" alt="" onclick="event.stopPropagation()">
+  <p class="lb-counter" id="lb-counter"></p>
+</div>
+
 <!-- Toast للمشاركة -->
 <div class="toast" id="share-toast">تم نسخ الرابط ✓</div>
 
 <script>
+// ── مشاركة ────────────────────────────────────────────────────────
 function shareThis(id, label) {
   const url = window.location.href;
   if (navigator.share) {
@@ -135,5 +178,35 @@ function showToast() {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2500);
 }
+
+// ── Lightbox ──────────────────────────────────────────────────────
+const _photos = [{% for p in photos %}"{{ p.file_id }}"{% if not loop.last %},{% endif %}{% endfor %}];
+let _lbIdx = 0;
+
+function openLightbox(fileId, idx) {
+  _lbIdx = idx;
+  _renderLb();
+  document.getElementById('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function lbNav(dir) {
+  _lbIdx = (_lbIdx + dir + _photos.length) % _photos.length;
+  _renderLb();
+}
+function _renderLb() {
+  const img = document.getElementById('lb-img');
+  img.src = '/file/' + _photos[_lbIdx];
+  document.getElementById('lb-counter').textContent = (_lbIdx + 1) + ' / ' + _photos.length;
+}
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lightbox').classList.contains('open')) return;
+  if (e.key === 'Escape') closeLightbox();
+  if (e.key === 'ArrowRight' || e.key === 'ArrowUp') lbNav(-1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowDown') lbNav(1);
+});
 </script>
 {% endblock %}

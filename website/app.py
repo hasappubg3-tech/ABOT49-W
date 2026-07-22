@@ -195,66 +195,66 @@ def _pdf_thumbnail(bid: int) -> bytes | None:
         return None
 
 
-def _grandparent_btn(btn: dict) -> dict | None:
-    """يُعيد زر الجد (مستويان للأعلى)."""
-    pid = btn.get("parent_id")
-    if pid is None:
-        return None
-    parent = _col("buttons").find_one({"id": pid})
-    if not parent:
-        return None
-    gpid = parent.get("parent_id")
-    if gpid is None:
-        return None
-    return _col("buttons").find_one({"id": gpid})
-
-
-def _teacher_from_items(bid: int) -> str:
-    """يستخرج اسم الأستاذ من النص الأول في محتوى الملزمة."""
+def _parse_content_lines(bid: int) -> dict:
+    """
+    يجلب أول عنصر ذي content في الملزمة ويستخرج منه:
+      - title  : السطر الأول (نوع + مادة + جزء …)
+      - teacher: ما بعد "للاستاذ"
+      - year   : رقم رباعي من سطر السنة أو أي سطر
+    """
     item = _col("content_items").find_one(
-        {"button_id": bid, "type": "text"},
+        {"button_id": bid, "content": {"$exists": True, "$ne": ""}},
         sort=[("ord", 1), ("id", 1)]
     )
     if not item:
-        return ""
-    content = item.get("content", "")
-    for line in content.split("\n"):
-        m = re.search(r'للاستاذ\s+(.+)', line)
-        if m:
-            name = strip_emoji(m.group(1)).replace("|", "").strip()
-            if name:
-                return name
-    return ""
+        return {}
+
+    raw   = item.get("content", "")
+    lines = [re.sub(r'[⚜️🔸🔹|✨💫⭐★☆]+', '', l).strip() for l in raw.split("\n")]
+    lines = [l.strip(" |–-") for l in lines if l.strip(" |–-")]
+
+    title   = ""
+    teacher = ""
+    year    = ""
+
+    for i, line in enumerate(lines):
+        # السطر الأول كعنوان
+        if not title and line:
+            title = strip_emoji(line).strip()
+
+        # اسم الأستاذ
+        m_teacher = re.search(r'للاستاذ\s+(.+)', line)
+        if m_teacher and not teacher:
+            teacher = strip_emoji(m_teacher.group(1)).replace("|", "").strip()
+
+        # السنة: من سطر "سنة الاصدار" أو أي رقم رباعي
+        m_year = re.search(r'\b(20\d{2})\b', line)
+        if m_year and not year:
+            year = m_year.group(1)
+
+    return {"title": title, "teacher": teacher, "year": year}
 
 
 def _note_display_name(btn: dict) -> str:
-    """يبني اسم الملزمة بصيغة: النوع المادة للاستاذ الاسم السنة"""
-    bid       = btn["id"]
-    raw_label = strip_emoji(btn.get("label", ""))
-    words     = raw_label.split()
+    """يبني اسم الملزمة بصيغة: (السطر الأول من المحتوى) للاستاذ (الاسم) (السنة)"""
+    bid  = btn["id"]
+    info = _parse_content_lines(bid)
 
-    # النوع: أول كلمة من اسم الزر
-    note_type = words[0] if words else ""
+    title   = info.get("title", "")
+    teacher = info.get("teacher", "")
+    year    = info.get("year", "")
 
-    # السنة: أول رقم رباعي في اسم الزر
-    year_m = re.search(r'\b(20\d{2})\b', raw_label)
-    year   = year_m.group(1) if year_m else ""
+    # إذا لم يوجد عنوان من المحتوى، نرجع للتسمية الاحتياطية
+    if not title:
+        title = strip_emoji(btn.get("label", ""))
 
-    # الأستاذ: من وصف الملزمة
-    teacher = _teacher_from_items(bid)
-
-    # المادة: من زر الجد
-    gp      = _grandparent_btn(btn)
-    subject = strip_emoji(gp.get("label", "")) if gp else ""
-
-    parts = [p for p in [note_type, subject] if p]
+    parts = [title]
     if teacher:
         parts.append(f"للاستاذ {teacher}")
-    if year:
+    if year and year not in title:
         parts.append(year)
 
-    result = " ".join(parts)
-    return result if result else raw_label
+    return " ".join(parts)
 
 
 def _enrich(btn: dict) -> dict:

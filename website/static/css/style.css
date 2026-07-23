@@ -56,19 +56,6 @@ body {
   transition: background var(--transition), color var(--transition);
 }
 
-/* نقش رخامي خفيف على الخلفية */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background-image:
-    linear-gradient(120deg, transparent 40%, var(--marble-vein) 41%, transparent 42%),
-    linear-gradient(200deg, transparent 35%, var(--marble-vein) 36%, transparent 38%),
-    linear-gradient(70deg,  transparent 60%, var(--marble-vein) 61%, transparent 63%);
-  opacity: 1;
-}
 body > * { position: relative; z-index: 1; }
 
 a { color: inherit; text-decoration: none; }
@@ -251,17 +238,14 @@ button { cursor: pointer; font-family: var(--font); border: none; background: no
   position: relative;
   overflow: hidden;
 }
-/* عروق الرخام */
+/* بريق رخامي خفيف */
 .hero::before {
   content: '';
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(115deg, transparent 30%, rgba(201,162,39,.08) 31%, transparent 33%),
-    linear-gradient(215deg, transparent 45%, rgba(201,162,39,.06) 46%, transparent 48%),
-    linear-gradient(75deg,  transparent 60%, rgba(201,162,39,.05) 61%, transparent 63%),
-    radial-gradient(ellipse at 30% 70%, rgba(201,162,39,.07) 0%, transparent 55%),
-    radial-gradient(ellipse at 70% 30%, rgba(201,162,39,.07) 0%, transparent 55%);
+  background:
+    radial-gradient(ellipse at 20% 80%, rgba(201,162,39,.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(201,162,39,.06) 0%, transparent 50%);
 }
 .hero::after {
   content: '';

@@ -23,10 +23,9 @@
     }
   }
 
-  // تحميل التفضيل المحفوظ أو ضبط الجهاز
+  // تحميل التفضيل المحفوظ، الافتراضي دائماً فاتح
   const saved = localStorage.getItem(STORAGE_KEY);
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  applyTheme(saved || (prefersDark ? 'dark' : 'light'));
+  applyTheme(saved || 'light');
 
   toggleBtn?.addEventListener('click', () => {
     const current = html.getAttribute('data-theme');
